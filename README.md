@@ -1,4 +1,4 @@
-# Clawdmeter .NET
+# ClaudeMeter .NET
 
 Widget de escritorio para Windows (Blazor Hybrid: WPF + `BlazorWebView`) que muestra en tiempo real el consumo de cuota de Claude Code — sesión, semana, countdown hasta el reset — sin salir del escritorio.
 

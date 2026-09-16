@@ -1,0 +1,26 @@
+<Project>
+
+  <!--
+    Propiedades MSBuild comunes a todos los proyectos de la solución.
+    Se heredan automáticamente por ubicación (MSBuild busca este fichero
+    subiendo desde cada .csproj), sin necesidad de repetir configuración
+    en cada proyecto individual.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+
+    <!-- Analizadores Roslyn habilitados desde el primer commit (issue F0). -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Default</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Warnings como errores solo en Release, tal y como pide la issue. -->
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

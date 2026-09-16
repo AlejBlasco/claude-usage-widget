@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Clawdmeter .NET** — a Windows desktop widget (Blazor Hybrid: WPF host + `BlazorWebView`) that shows real-time Claude Code usage (session/weekly rate limits, countdowns, a reactive "mascot" view). Personal project, currently pre-code: the repo only contains the `.claude/` SDLC agent scaffolding and this roadmap; no `.sln`/`.csproj` has been created yet.
+**ClaudeMeter .NET** — a Windows desktop widget (Blazor Hybrid: WPF host + `BlazorWebView`) that shows real-time Claude Code usage (session/weekly rate limits, countdowns, a reactive "mascot" view). Personal project. The F0 solution scaffolding (`ClaudeMeter.sln` + the 4 layer projects under `src/` and their test projects under `test/`, empty of business logic) is in place; implementation of the roadmap phases below is still in progress.
 
 Stack: .NET 8, WPF, BlazorWebView, MediatR, EF Core (SQLite, post-MVP), xUnit / bUnit, Serilog.
 
@@ -35,7 +35,7 @@ Post-MVP / optional — only pursued if the MVP proves worth extending further:
 - **F4** — history + peak/off-peak (needs `SqliteUsageHistoryStore`/EF Core first): `UsageHistoryEntry`, `IUsageHistoryStore`, `PeakOffPeakAnalyzer` (pure, testable), `PeakOffPeakPage.razor`.
 - **F5** — multi-account: poll multiple `config_dirs` per cycle, pick "active plan" by recent activity (mirrors the original Python daemon's behavior).
 - **F6** — distribution: Velopack or MSIX installer, autostart + auto-update, versioning via Nerdbank.GitVersioning.
-- **F7** (stretch) — real hardware: `BleUsageSink` in Infrastructure feeding a physical Clawdmeter, reusing the same `UsageSnapshot`.
+- **F7** (stretch) — real hardware: `BleUsageSink` in Infrastructure feeding a physical ClaudeMeter, reusing the same `UsageSnapshot`.
 
 ## Testing
 
