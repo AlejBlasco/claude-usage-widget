@@ -1,0 +1,33 @@
+name: Cerrar milestone completo
+
+# Cuando se cierra una issue, si esa issue tenía asignado un milestone y ya
+# no le quedan issues abiertas, cierra el milestone automáticamente.
+# GitHub no hace esto por sí solo: cerrar la última issue de un milestone
+# no cambia el estado del propio milestone.
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  issues: write
+
+jobs:
+  close-milestone-if-empty:
+    if: github.event.issue.milestone != null
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cerrar milestone si no quedan issues abiertas
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MILESTONE_NUMBER: ${{ github.event.issue.milestone.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          open_issues=$(gh api "repos/${REPO}/milestones/${MILESTONE_NUMBER}" --jq '.open_issues')
+          echo "Issues abiertas restantes en el milestone #${MILESTONE_NUMBER}: ${open_issues}"
+
+          if [ "$open_issues" -eq 0 ]; then
+            gh api -X PATCH "repos/${REPO}/milestones/${MILESTONE_NUMBER}" -f state=closed
+            echo "Milestone #${MILESTONE_NUMBER} cerrado."
+          else
+            echo "Milestone #${MILESTONE_NUMBER} sigue teniendo issues abiertas, no se cierra."
+          fi
