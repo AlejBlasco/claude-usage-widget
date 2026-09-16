@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ClaudeMeter.ConsoleApp</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClaudeMeter.Application\ClaudeMeter.Application.csproj" />
+    <ProjectReference Include="..\ClaudeMeter.Infrastructure\ClaudeMeter.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Permite que ClaudeMeter.Console.Tests invoque el método interno
+         UsagePollingLoop.ExecuteIterationAsync sin esperar 60s reales
+         por iteración de test — mismo patrón ya usado por
+         ClaudeMeter.Infrastructure con CredentialsFileTokenProvider. -->
+    <InternalsVisibleTo Include="ClaudeMeter.Console.Tests" />
+  </ItemGroup>
+
+</Project>

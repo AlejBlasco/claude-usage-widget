@@ -46,13 +46,22 @@ public sealed record RateLimitWindow(double? PercentageUsed, int? MinutesRemaini
 /// </summary>
 public static class RateLimitWindowParser
 {
-    // Exige exactamente dígitos + '.' opcional + dígitos + '%', sin
-    // espacios internos ni externos — cualquier desviación (fracción sin
-    // '%', separador decimal distinto, espacios extra, texto no numérico)
-    // no matchea y se trata como "no disponible" (ver Decisiones Técnicas
-    // Clave del diseño).
-    private static readonly Regex UtilizationPattern =
+    // Confirmado mediante validación manual end-to-end (issue #5) contra la
+    // API real: "utilization" llega como fracción decimal 0-1 (p. ej.
+    // "0.49"), NUNCA como cadena con '%'. Se mantiene además el patrón
+    // "NN[.N]%" por si el formato varía entre respuestas (riesgo de datos
+    // ya documentado: la cabecera no está documentada oficialmente).
+    private static readonly Regex UtilizationPercentPattern =
         new(@"^(0|[1-9]\d*)(\.\d+)?%$", RegexOptions.Compiled);
+
+    // Fracción decimal 0-1 (o "0"/"1" exactos), sin espacios ni signo.
+    private static readonly Regex UtilizationFractionPattern =
+        new(@"^(0(\.\d+)?|1(\.0+)?)$", RegexOptions.Compiled);
+
+    // Confirmado mediante validación manual: "reset" llega como timestamp
+    // Unix en segundos (p. ej. "1789602600"), no como fecha ISO-8601.
+    private static readonly Regex UnixTimestampPattern =
+        new(@"^\d+$", RegexOptions.Compiled);
 
     /// <summary>
     /// Parsea una única ventana. Si <paramref name="headers"/> es
@@ -101,24 +110,50 @@ public static class RateLimitWindowParser
 
     private static double? TryParsePercentageUsed(string? utilization)
     {
-        if (utilization is null || !UtilizationPattern.IsMatch(utilization))
+        if (utilization is null)
         {
             return null;
         }
 
-        var numericPart = utilization[..^1]; // quita el '%' final, ya validado por la regex
-        if (!double.TryParse(numericPart, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value))
+        if (UtilizationFractionPattern.IsMatch(utilization) &&
+            double.TryParse(utilization, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var fraction))
         {
-            return null;
+            var percentage = fraction * 100;
+            return percentage is >= 0 and <= 100 ? percentage : null;
         }
 
-        return value is >= 0 and <= 100 ? value : null;
+        if (UtilizationPercentPattern.IsMatch(utilization))
+        {
+            var numericPart = utilization[..^1]; // quita el '%' final, ya validado por la regex
+            if (double.TryParse(numericPart, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value))
+            {
+                return value is >= 0 and <= 100 ? value : null;
+            }
+        }
+
+        return null;
     }
 
     private static int? TryParseMinutesRemaining(string? reset, DateTimeOffset now)
     {
-        if (reset is null ||
-            !DateTimeOffset.TryParse(reset, CultureInfo.InvariantCulture, DateTimeStyles.None, out var resetTime))
+        if (reset is null)
+        {
+            return null;
+        }
+
+        DateTimeOffset resetTime;
+        if (UnixTimestampPattern.IsMatch(reset) && long.TryParse(reset, NumberStyles.None, CultureInfo.InvariantCulture, out var epochSeconds))
+        {
+            try
+            {
+                resetTime = DateTimeOffset.FromUnixTimeSeconds(epochSeconds);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
+        }
+        else if (!DateTimeOffset.TryParse(reset, CultureInfo.InvariantCulture, DateTimeStyles.None, out resetTime))
         {
             return null;
         }

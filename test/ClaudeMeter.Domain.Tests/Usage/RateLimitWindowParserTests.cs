@@ -120,7 +120,8 @@ public sealed class RateLimitWindowParserTests
     }
 
     [Theory]
-    [InlineData("0.1")]      // fracción en vez de porcentaje
+    [InlineData("1.5")]      // fracción fuera de [0,1]
+    [InlineData("-0.1")]     // fracción negativa
     [InlineData("10,5%")]    // separador decimal distinto de '.'
     [InlineData(" 10% ")]    // espacios extra
     [InlineData("abc%")]     // texto no numérico
@@ -148,6 +149,35 @@ public sealed class RateLimitWindowParserTests
 
         Assert.Equal(10.0, result.PercentageUsed);
         Assert.Null(result.MinutesRemaining);
+    }
+
+    // --- Formato real confirmado mediante validación manual end-to-end
+    // (issue #5): la API devuelve Utilization como fracción decimal 0-1 y
+    // Reset como timestamp Unix en segundos, no como "NN%" / ISO-8601. ---
+
+    [Theory]
+    [InlineData("0.49", 49.0)]
+    [InlineData("0", 0.0)]
+    [InlineData("1", 100.0)]
+    public void Parse_ConUtilizationComoFraccionDecimalReal_CalculaPercentageUsedMultiplicandoPorCien(
+        string realUtilization, double expectedPercentage)
+    {
+        var headers = new RawRateLimitHeaders("allowed", realUtilization, "", "1789560000");
+
+        var result = RateLimitWindowParser.Parse(headers, Now);
+
+        Assert.Equal(expectedPercentage, result.PercentageUsed);
+    }
+
+    [Fact]
+    public void Parse_ConResetComoTimestampUnixReal_CalculaMinutesRemaining()
+    {
+        // 1789560000 = 2026-09-16T12:00:00Z = 120 minutos después de "ahora".
+        var headers = new RawRateLimitHeaders("allowed", "0.49", "", "1789560000");
+
+        var result = RateLimitWindowParser.Parse(headers, Now);
+
+        Assert.Equal(120, result.MinutesRemaining);
     }
 
     [Theory]
