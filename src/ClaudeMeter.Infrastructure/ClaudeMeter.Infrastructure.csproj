@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\ClaudeMeter.Application\ClaudeMeter.Application.csproj" />
+  </ItemGroup>
+</Project>
