@@ -2,4 +2,10 @@
   <ItemGroup>
     <ProjectReference Include="..\ClaudeMeter.Application\ClaudeMeter.Application.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Permite que ClaudeMeter.Infrastructure.Tests use el constructor
+         interno de CredentialsFileTokenProvider (ruta de fichero
+         inyectable solo para tests, sin exponerla públicamente). -->
+    <InternalsVisibleTo Include="ClaudeMeter.Infrastructure.Tests" />
+  </ItemGroup>
 </Project>
