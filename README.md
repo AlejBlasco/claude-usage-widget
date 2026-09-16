@@ -1,12 +1,16 @@
 # ClaudeMeter .NET
 
-Widget de escritorio para Windows (Blazor Hybrid: WPF + `BlazorWebView`) que muestra en tiempo real el consumo de cuota de Claude Code — sesión, semana, countdown hasta el reset — sin salir del escritorio.
+![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)
+![Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
+![Fase](https://img.shields.io/badge/roadmap-F0%20completada-brightgreen)
+
+Widget de escritorio (Blazor Hybrid: WPF + `BlazorWebView`) que muestra en tiempo real el consumo de cuota de Claude Code — sesión, semana, countdown hasta el reset — sin salir del escritorio.
 
 > **Proyecto demo.** Además de ser un widget funcional, este repositorio sirve como caso de uso real del [SDLC Kit para Claude Code](https://github.com/AlejBlasco/claude-sdlc-kit): todo el desarrollo (análisis, diseño, implementación, documentación y testing) se lleva a través de sus comandos `/sdlc-*`.
 
 ## Stack
 
-.NET 8 · WPF · BlazorWebView · MediatR · EF Core (SQLite, post-MVP) · xUnit / bUnit · Serilog
+WPF · BlazorWebView · MediatR · EF Core (SQLite, post-MVP) · xUnit / bUnit · Serilog
 
 ## Arquitectura
 
@@ -24,10 +28,51 @@ Detalle completo de la arquitectura y del roadmap por fases (F0-F7) en [`CLAUDE.
 ## Estructura del repositorio
 
 ```
-src/    código fuente (Domain, Application, Infrastructure, Desktop)
+src/    código fuente (Domain, Application, Infrastructure, Desktop, Console)
 test/   proyectos de test (xUnit, bUnit)
 docs/   documentación generada por la pipeline SDLC
 ```
+
+## Estado del proyecto
+
+Pipeline de datos validado de extremo a extremo por consola, sin nada visual todavía:
+
+- Lectura del token OAuth desde `.credentials.json` (issues #28-29).
+- Llamada a la API de Anthropic con los headers OAuth correctos (issue #30).
+- Parseo de las cabeceras `anthropic-ratelimit-*` a `RateLimitWindow` — porcentaje consumido y minutos restantes (issue #4).
+- Bucle de consola que imprime sesión/semana cada 60s y sigue vivo ante errores de red o token inválido, sin caerse (issue #5).
+
+Siguiente fase: **F1** — primer widget visual (`MainWindow` WPF sin bordes + `UsagePage.razor` con barras de sesión/semana). Roadmap completo por fases en [`CLAUDE.md`](./CLAUDE.md).
+
+## Requisitos previos
+
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+- Windows, con Claude Code ya instalado y con sesión iniciada — el proyecto lee el token OAuth del mismo fichero que usa el CLI (`%USERPROFILE%\.claude\.credentials.json`). Sin ese fichero, el proyecto compila y testea igual, pero no hay datos reales que mostrar.
+
+## Compilar y testear
+
+```bash
+dotnet build ClaudeMeter.sln
+dotnet test ClaudeMeter.sln
+```
+
+## Probar la validación de F0 (consola)
+
+`ClaudeMeter.Console` es el arnés de validación desechable de F0: confirma en texto plano que todo el pipeline (token → API → parseo → countdown) funciona de extremo a extremo, antes de construir cualquier UI. **No es parte del producto final** — F1 reutilizará el mismo core (`Application`/`Infrastructure`) directamente desde `ClaudeMeter.Desktop`, no desde este proyecto.
+
+```bash
+dotnet run --project src/ClaudeMeter.Console
+```
+
+Salida esperada, una línea nueva cada ~60 segundos:
+
+```
+[21:53:20] Sesión: 51% (237 min) | Semana: 48% (2347 min)
+```
+
+- Para detenerlo: `Ctrl+C` (F0 no tiene apagado controlado, es intencional).
+- Si `.credentials.json` no existe/está corrupto, o el token es rechazado (401/403), se imprime un error claro en stderr y el bucle sigue con vida — nunca se cae ni intenta refrescar el token automáticamente.
+- ⚠️ Cada iteración exitosa hace una llamada real a la API de Anthropic y consume cuota real de tu cuenta — no lo dejes corriendo indefinidamente sin necesidad.
 
 ---
 
