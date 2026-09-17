@@ -1,0 +1,40 @@
+@* Componente hijo reutilizado para la barra de sesión y de semana: única
+   fuente de la barra + etiqueta + color, para garantizar que ambas usan
+   exactamente la misma regla de umbral (AC de US-3). *@
+
+<div class="usage-bar usage-bar--@ColorClass">
+    <span class="usage-bar__title">@Title</span>
+    @if (Window.PercentageUsed is { } pct)
+    {
+        <div class="usage-bar__track">
+            <div class="usage-bar__fill" style="width:@(pct.ToString("0"))%"></div>
+        </div>
+        <span class="usage-bar__value">
+            @pct.ToString("0")%@(Stale ? " (desactualizado)" : "")
+        </span>
+    }
+    else
+    {
+        <span class="usage-bar__value usage-bar__value--unavailable">No disponible</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public RateLimitWindow Window { get; set; } = RateLimitWindow.Unavailable;
+
+    [Parameter]
+    public bool Stale { get; set; }
+
+    // Única función de umbral para ambas barras -> AC de US-3.
+    private string ColorClass => UsageThresholdClassifier.Classify(Window.PercentageUsed) switch
+    {
+        UsageThreshold.Normal => "green",
+        UsageThreshold.Warning => "amber",
+        UsageThreshold.Critical => "red",
+        _ => "neutral"
+    };
+}

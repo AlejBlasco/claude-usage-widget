@@ -1,14 +1,37 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- Requerido por el SDK de Razor para resolver correctamente el
+         namespace de los .razor nuevos bajo Pages/ (workaround documentado
+         por Microsoft para alojar Blazor en un proyecto WPF). -->
+    <RootNamespace>ClaudeMeter.Desktop</RootNamespace>
+  </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ClaudeMeter.Application\ClaudeMeter.Application.csproj" />
     <ProjectReference Include="..\ClaudeMeter.Infrastructure\ClaudeMeter.Infrastructure.csproj" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
-  </PropertyGroup>
+  <ItemGroup>
+    <!-- Última versión estable 8.x disponible en NuGet.org en el momento de
+         implementar (verificada en https://api.nuget.org): 8.0.100, única
+         compatible con el TFM net8.0-windows ya fijado por
+         Directory.Build.props (las series 9.x/10.x exigen net9.0-windows/
+         net10.0-windows). -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="8.0.100" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Permite que ClaudeMeter.Desktop.Tests (bUnit, migración pendiente a
+         Microsoft.NET.Sdk.Razor en la fase de Testing) invoque los
+         miembros internal de UsagePollingCoordinator/UsagePage
+         (PollOnceForTestsAsync, ApplyForTests, etc.) sin esperar 60s reales
+         por ciclo de test — mismo patrón ya usado por
+         ClaudeMeter.ConsoleApp con ClaudeMeter.Console.Tests. -->
+    <InternalsVisibleTo Include="ClaudeMeter.Desktop.Tests" />
+  </ItemGroup>
 
 </Project>

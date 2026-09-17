@@ -1,0 +1,105 @@
+/* Estilos mínimos escritos a mano para el widget de F1 — deliberadamente
+   sin Bootstrap ni ningún otro CSS de terceros (ver rationale de Technology
+   Choices en el documento de diseño): el widget solo necesita dos barras y
+   unas etiquetas.
+
+   Nota sobre transparencia (ver documento de diseño): WebView2/Chromium
+   pinta su rectángulo de forma opaca salvo que el host llame a una API
+   nativa adicional, fuera de alcance de F1. Por eso aquí se fija un fondo
+   opaco intencional con estética de widget/HUD oscuro; la transparencia
+   real de MainWindow.xaml solo se aprecia alrededor del BlazorWebView. */
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: #e8e8e8;
+    background-color: #20232aee;
+    overflow: hidden;
+}
+
+#app {
+    height: 100%;
+}
+
+.usage-widget {
+    box-sizing: border-box;
+    height: 100%;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+}
+
+.usage-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.usage-bar__title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #9aa0ab;
+}
+
+.usage-bar__track {
+    height: 10px;
+    border-radius: 5px;
+    background-color: #3a3f4b;
+    overflow: hidden;
+}
+
+.usage-bar__fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.3s ease-in-out;
+}
+
+.usage-bar__value {
+    font-size: 12px;
+    color: #cfd3da;
+}
+
+.usage-bar__value--unavailable {
+    color: #7d8290;
+    font-style: italic;
+}
+
+/* Umbral verde/ámbar/rojo (US-3) — el color se decide exclusivamente vía
+   clase CSS, la severidad (Normal/Warning/Critical) la calcula
+   UsageThresholdClassifier en Domain, sin ninguna noción de color allí. */
+.usage-bar--green .usage-bar__fill {
+    background-color: #3fb950;
+}
+
+.usage-bar--amber .usage-bar__fill {
+    background-color: #d29922;
+}
+
+.usage-bar--red .usage-bar__fill {
+    background-color: #f85149;
+}
+
+.usage-bar--neutral .usage-bar__fill {
+    background-color: #5a6070;
+}
+
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    inset: auto 0 0 0;
+    background: #f85149;
+    color: white;
+    padding: 8px 16px;
+    font-size: 12px;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    float: right;
+}

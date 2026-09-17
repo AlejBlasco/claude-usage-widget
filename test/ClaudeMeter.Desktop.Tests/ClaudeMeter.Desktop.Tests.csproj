@@ -1,9 +1,14 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
     <!-- Debe coincidir con el TFM de Desktop (net8.0-windows) para poder referenciarlo. -->
     <TargetFramework>net8.0-windows</TargetFramework>
     <IsPackable>false</IsPackable>
+    <!-- Sdk="Microsoft.NET.Sdk.Razor" (migrado en fase de Testing, ver
+         docs/sdlc/testing/f1-widget-visual-base.md) es el requisito oficial
+         de bUnit para proyectos de test que renderizan componentes Razor
+         (UsageBar/UsagePage). Este proyecto no define sus propios .razor,
+         solo referencia los de ClaudeMeter.Desktop. -->
   </PropertyGroup>
 
   <ItemGroup>
