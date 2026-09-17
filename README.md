@@ -2,11 +2,17 @@
 
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)
 ![Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
-![Fase](https://img.shields.io/badge/roadmap-F0%20completada-brightgreen)
+![Fase](https://img.shields.io/badge/roadmap-F1%20completada-brightgreen)
 
 Widget de escritorio (Blazor Hybrid: WPF + `BlazorWebView`) que muestra en tiempo real el consumo de cuota de Claude Code — sesión, semana, countdown hasta el reset — sin salir del escritorio.
 
 > **Proyecto demo.** Además de ser un widget funcional, este repositorio sirve como caso de uso real del [SDLC Kit para Claude Code](https://github.com/AlejBlasco/claude-sdlc-kit): todo el desarrollo (análisis, diseño, implementación, documentación y testing) se lleva a través de sus comandos `/sdlc-*`.
+
+## Vista previa
+
+<img src="docs/assets/widget-preview.svg" alt="Mockup del widget ClaudeMeter: ventana sin bordes anclada a la esquina inferior derecha, con barras de sesión y semana coloreadas por umbral" width="720">
+
+*Mockup ilustrativo (no una captura real) fiel a los colores y layout de `wwwroot/css/app.css`: ventana `280×140` sin bordes, siempre encima, anclada a la esquina inferior derecha con 16px de margen. Verde por debajo del 70%, ámbar entre 70-90%, rojo a partir del 90% — ver [`UsageThresholdClassifier`](./src/ClaudeMeter.Domain/Usage/UsageThreshold.cs).*
 
 ## Stack
 
@@ -25,6 +31,39 @@ Clean Architecture de 4 capas, dependencia siempre hacia dentro (Desktop e Infra
 
 Detalle completo de la arquitectura y del roadmap por fases (F0-F7) en [`CLAUDE.md`](./CLAUDE.md).
 
+```mermaid
+flowchart TD
+    subgraph Desktop["ClaudeMeter.Desktop"]
+        APP["App.xaml.cs\n(composition root)"]
+        MW["MainWindow.xaml(.cs)\nsin bordes / topmost / transparente"]
+        BWV["BlazorWebView"]
+        UP["UsagePage.razor"]
+        UB["UsageBar.razor\n(sesión / semana)"]
+        UPC["UsagePollingCoordinator\n(Timer 60s)"]
+    end
+
+    subgraph Core["Application / Infrastructure / Domain"]
+        IUDS["IUsageDataSource"]
+        AAUDS["AnthropicApiUsageDataSource"]
+        ITP["ITokenProvider"]
+        CFTP["CredentialsFileTokenProvider"]
+        RLWP["RateLimitWindowParser"]
+        UTC["UsageThresholdClassifier"]
+    end
+
+    APP --> ITP & IUDS
+    MW -- aloja --> BWV --> UP
+    UP -- crea --> UPC -- GetUsageAsync --> IUDS
+    IUDS -.-> AAUDS -- usa --> ITP -.-> CFTP
+    UP -- ParseSnapshot --> RLWP
+    UP -- renderiza --> UB -- Classify --> UTC
+
+    style Desktop fill:#eef7ee,stroke:#4a4
+    style Core fill:#f5f5f5,stroke:#999,stroke-dasharray: 4 3
+```
+
+Diagrama completo (secuencia del ciclo de 60s, edge cases, cobertura de tests) en [`docs/sdlc/technical/f1-widget-visual-base.md`](./docs/sdlc/technical/f1-widget-visual-base.md).
+
 ## Estructura del repositorio
 
 ```
@@ -35,14 +74,24 @@ docs/   documentación generada por la pipeline SDLC
 
 ## Estado del proyecto
 
-Pipeline de datos validado de extremo a extremo por consola, sin nada visual todavía:
+**F0 — validación por consola** (issues #1-#5, cerradas):
 
-- Lectura del token OAuth desde `.credentials.json` (issues #28-29).
-- Llamada a la API de Anthropic con los headers OAuth correctos (issue #30).
-- Parseo de las cabeceras `anthropic-ratelimit-*` a `RateLimitWindow` — porcentaje consumido y minutos restantes (issue #4).
-- Bucle de consola que imprime sesión/semana cada 60s y sigue vivo ante errores de red o token inválido, sin caerse (issue #5).
+- Lectura del token OAuth desde `.credentials.json`.
+- Llamada a la API de Anthropic con los headers OAuth correctos.
+- Parseo de las cabeceras `anthropic-ratelimit-*` a `RateLimitWindow` — porcentaje consumido y minutos restantes.
+- Bucle de consola que imprime sesión/semana cada 60s y sigue vivo ante errores de red o token inválido, sin caerse.
 
-Siguiente fase: **F1** — primer widget visual (`MainWindow` WPF sin bordes + `UsagePage.razor` con barras de sesión/semana). Roadmap completo por fases en [`CLAUDE.md`](./CLAUDE.md).
+**F1 — primer widget visual** (issues [#6](https://github.com/AlejBlasco/claude-usage-widget/issues/6)-[#9](https://github.com/AlejBlasco/claude-usage-widget/issues/9), tratadas como un único ciclo SDLC):
+
+- `MainWindow` WPF sin bordes, siempre encima y transparente fuera del `BlazorWebView`, anclada a la esquina inferior derecha.
+- `UsagePage.razor` con dos barras de progreso (sesión/semana) reutilizando el mismo core de F0, sin reimplementar parseo ni llamada HTTP.
+- Color por umbral verde/ámbar/rojo (`UsageThresholdClassifier`, función pura en `Domain`) — misma regla para ambas barras.
+- Refresco automático cada 60s (`UsagePollingCoordinator`), con guard anti-solape y liberación limpia del timer al cerrar la ventana.
+- 132 tests en la solución (31 nuevos en `ClaudeMeter.Desktop.Tests`, 16 en `ClaudeMeter.Domain.Tests`), 94-100% de cobertura en las clases de negocio nuevas.
+
+Pendiente de validación manual (no automatizable por la pipeline SDLC, ver [`docs/sdlc/testing/f1-widget-visual-base.md`](./docs/sdlc/testing/f1-widget-visual-base.md)): comportamiento visual real de `MainWindow` en un equipo Windows, y estabilidad de memoria/handles en una ejecución prolongada (30-60 min).
+
+Siguiente fase: **F2 — robustez** ([#10](https://github.com/AlejBlasco/claude-usage-widget/issues/10)-[#13](https://github.com/AlejBlasco/claude-usage-widget/issues/13)) — manejo de 401/403 con aviso claro, reintentos con backoff, logging estructurado (Serilog), `config.json` (intervalo/posición/chime) y arrastrar el widget con el ratón para reposicionarlo. El cierre directo desde el propio widget queda para F3 ([#17](https://github.com/AlejBlasco/claude-usage-widget/issues/17)), junto al icono de bandeja y el click-through. Roadmap completo por fases en [`CLAUDE.md`](./CLAUDE.md).
 
 ## Requisitos previos
 
@@ -56,9 +105,17 @@ dotnet build ClaudeMeter.sln
 dotnet test ClaudeMeter.sln
 ```
 
+## Ejecutar el widget (F1)
+
+```bash
+dotnet run --project src/ClaudeMeter.Desktop
+```
+
+Abre `MainWindow` sin bordes, siempre encima, anclada a la esquina inferior derecha del área de trabajo (ver [Vista previa](#vista-previa)). Con un `.credentials.json` válido, las barras de sesión/semana muestran porcentaje y color real, refrescándose solas cada 60s; sin token o con un 401/403, ambas barras muestran "No disponible" en vez de lanzar o dejar la ventana en blanco. No hay forma de cerrarla desde la propia ventana todavía — usa el Administrador de tareas hasta que llegue F3 (icono de bandeja + cierre directo desde el widget, [#17](https://github.com/AlejBlasco/claude-usage-widget/issues/17)).
+
 ## Probar la validación de F0 (consola)
 
-`ClaudeMeter.Console` es el arnés de validación desechable de F0: confirma en texto plano que todo el pipeline (token → API → parseo → countdown) funciona de extremo a extremo, antes de construir cualquier UI. **No es parte del producto final** — F1 reutilizará el mismo core (`Application`/`Infrastructure`) directamente desde `ClaudeMeter.Desktop`, no desde este proyecto.
+`ClaudeMeter.Console` es el arnés de validación desechable de F0: confirma en texto plano que todo el pipeline (token → API → parseo → countdown) funciona de extremo a extremo, antes de construir cualquier UI. **No es parte del producto final** — F1 reutiliza el mismo core (`Application`/`Infrastructure`) directamente desde `ClaudeMeter.Desktop`, no desde este proyecto.
 
 ```bash
 dotnet run --project src/ClaudeMeter.Console
