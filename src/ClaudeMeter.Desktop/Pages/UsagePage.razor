@@ -1,0 +1,92 @@
+@* Componente raíz inyectado como RootComponent del BlazorWebView. Crea su
+   propio UsagePollingCoordinator (US-4), mantiene el último
+   (RateLimitWindow Session, RateLimitWindow Weekly) calculado con
+   RateLimitWindowParser y renderiza dos UsageBar (US-2). *@
+@implements IDisposable
+@inject IUsageDataSource UsageDataSource
+
+<div class="usage-widget">
+    <UsageBar Title="Sesión" Window="@_session" Stale="@_isStale" />
+    <UsageBar Title="Semana" Window="@_weekly" Stale="@_isStale" />
+</div>
+
+@code {
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
+
+    private UsagePollingCoordinator? _coordinator;
+    private RateLimitWindow _session = RateLimitWindow.Unavailable;
+    private RateLimitWindow _weekly = RateLimitWindow.Unavailable;
+    private bool _hasEverSucceeded;
+    private bool _isStale;
+
+    protected override void OnInitialized()
+    {
+        _coordinator = new UsagePollingCoordinator(UsageDataSource, RefreshInterval);
+        _coordinator.SnapshotReceived += OnSnapshotReceived;
+        _coordinator.Start();
+    }
+
+    private void OnSnapshotReceived(UsageSnapshot snapshot, DateTimeOffset now)
+    {
+        // Llega desde el hilo del Timer, fuera del contexto de
+        // sincronización de Blazor -> hay que pasar por InvokeAsync (mismo
+        // motivo documentado por Microsoft para System.Timers.Timer.Elapsed).
+        _ = InvokeAsync(() =>
+        {
+            try
+            {
+                Apply(snapshot, now);
+                StateHasChanged();
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            {
+                // Carrera benigna: MainWindow se cerró (el componente se
+                // desmontó) mientras esta respuesta HTTP estaba en vuelo.
+                // El timer ya fue detenido por Dispose() antes de que el
+                // renderer se destruya, así que no hay fuga — simplemente
+                // no queda nada más que hacer con esta última respuesta.
+            }
+        });
+    }
+
+    /// <summary><c>internal</c> + <c>InternalsVisibleTo</c> hacia <c>ClaudeMeter.Desktop.Tests</c>: permite a bUnit simular un ciclo de refresco concreto sin depender del timer real.</summary>
+    internal void ApplyForTests(UsageSnapshot snapshot, DateTimeOffset now) => Apply(snapshot, now);
+
+    /// <summary><c>internal</c> + <c>InternalsVisibleTo</c>: expone si el poll subyacente sigue activo, para el test bUnit de "el timer se detiene al desmontar".</summary>
+    internal bool IsPollingActiveForTests => _coordinator?.IsRunningForTests ?? false;
+
+    private void Apply(UsageSnapshot snapshot, DateTimeOffset now)
+    {
+        var (session, weekly) = RateLimitWindowParser.ParseSnapshot(snapshot, now);
+
+        if (snapshot.IsSuccess)
+        {
+            _session = session;
+            _weekly = weekly;
+            _isStale = false;
+            _hasEverSucceeded = true;
+        }
+        else if (_hasEverSucceeded)
+        {
+            // Hubo un dato válido antes: se conserva el último _session/_weekly
+            // pero se marca como potencialmente desactualizado (AC de US-4).
+            _isStale = true;
+        }
+        else
+        {
+            // Nunca hubo éxito: se muestra "sin datos" directamente (US-2/US-3).
+            _session = session; // == RateLimitWindow.Unavailable
+            _weekly = weekly;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (_coordinator is not null)
+        {
+            _coordinator.SnapshotReceived -= OnSnapshotReceived;
+            _coordinator.Dispose();
+        }
+    }
+}
