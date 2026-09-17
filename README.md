@@ -226,3 +226,29 @@ El toolset está restringido a `issues` (que en el servidor de GitHub incluye ta
 6. Reinicia la terminal/Claude Code para que recoja la variable (las de nivel "User" no se propagan a procesos ya abiertos).
 
 El token nunca se escribe en ningún fichero de este repositorio — solo vive en la variable de entorno de tu máquina.
+
+### 6. Configurar el MCP de Playwright (tests E2E del contenido Razor)
+
+`ClaudeMeter.Desktop` no es una web app, pero `BlazorWebView` aloja WebView2 (Chromium embebido) — así que se puede automatizar/inspeccionar igual que una página web, conectando Playwright por CDP (Chrome DevTools Protocol) al proceso ya en marcha, en vez de dejar que Playwright lance su propio navegador. Configuración actual en `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--cdp-endpoint=http://localhost:9222"]
+    }
+  }
+}
+```
+
+**Para usarlo, arranca el widget con el puerto de depuración remota abierto:**
+
+```powershell
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
+dotnet run --project src/ClaudeMeter.Desktop
+```
+
+Con el proceso corriendo, el MCP de Playwright puede navegar/inspeccionar el DOM real dentro del `BlazorWebView` (verificar que las barras muestran el porcentaje/color correcto con CSS realmente aplicado por un motor Chromium, que el aviso de 401/403 se renderiza, etc.) — un nivel de verificación que bUnit no cubre porque renderiza sobre un DOM virtual, no un navegador real.
+
+**Qué NO cubre esto:** el chrome de la ventana WPF (`WindowStyle=None`, `AllowsTransparency`, `Topmost`, arrastrar con el ratón, cerrar la ventana) vive fuera del `BlazorWebView` — Playwright no tiene visibilidad de eso. Esas partes siguen dependiendo de validación manual en un Windows real, tal como ya documentan las fases de testing de cada milestone.

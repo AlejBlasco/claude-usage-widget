@@ -3,6 +3,7 @@ using ClaudeMeter.ConsoleApp.Polling;
 using ClaudeMeter.ConsoleApp.Rendering;
 using ClaudeMeter.Infrastructure.Authentication;
 using ClaudeMeter.Infrastructure.Usage;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ClaudeMeter.ConsoleApp;
 
@@ -22,7 +23,13 @@ internal static class Program
         using var httpClient = new HttpClient();
 
         ITokenProvider tokenProvider = new CredentialsFileTokenProvider();
-        IUsageDataSource usageDataSource = new AnthropicApiUsageDataSource(tokenProvider, httpClient);
+
+        // F0 no tiene infraestructura de logging propia (Serilog se
+        // introdujo en F2 solo para ClaudeMeter.Desktop, ver CLAUDE.md):
+        // NullLogger es la opción mínima y correcta para este arnés de
+        // consola, que sigue sin loguear nada por diseño.
+        IUsageDataSource usageDataSource = new AnthropicApiUsageDataSource(
+            tokenProvider, httpClient, NullLogger<AnthropicApiUsageDataSource>.Instance);
         IUsagePollingRenderer renderer = new ConsoleUsagePollingRenderer();
 
         var loop = new UsagePollingLoop(usageDataSource, renderer, PollInterval);

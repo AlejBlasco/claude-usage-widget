@@ -23,11 +23,23 @@ public enum UsageSnapshotStatus
     Unauthorized,
 
     /// <summary>
-    /// La petición falló por un motivo distinto a 401/403: error de red,
-    /// timeout, código 5xx, u otra respuesta 2xx sin las cabeceras
-    /// <c>anthropic-ratelimit-unified-*</c> mínimas esperadas.
+    /// La petición falló por un motivo transitorio: error de red, timeout,
+    /// o código 5xx. Categoría 1 del modelo de reintento de US-2 (F2) — es
+    /// el único estado que <c>RetryingUsageDataSource</c> reintenta con
+    /// backoff. Ya NO incluye el caso "2xx sin cabeceras" (ver
+    /// <see cref="MalformedResponse"/>).
     /// </summary>
-    RequestFailed
+    RequestFailed,
+
+    /// <summary>
+    /// La API respondió 2xx pero sin las cabeceras
+    /// <c>anthropic-ratelimit-unified-*</c> mínimas esperadas: un contrato
+    /// de API roto o persistente, no un fallo de red. Categoría 3 del
+    /// modelo de reintento de US-2 (F2) — <c>RetryingUsageDataSource</c>
+    /// nunca reintenta este estado (reintentar no lo arregla, solo retrasa
+    /// mostrar el problema).
+    /// </summary>
+    MalformedResponse
 }
 
 /// <summary>
@@ -96,7 +108,11 @@ public sealed record UsageSnapshot
     public static UsageSnapshot Unauthorized() =>
         new(UsageSnapshotStatus.Unauthorized, session: null, weekly: null);
 
-    /// <summary>Crea un resultado de "fallo de la petición" (red, 5xx, cabeceras ausentes).</summary>
+    /// <summary>Crea un resultado de "fallo transitorio de la petición" (red, timeout, 5xx).</summary>
     public static UsageSnapshot RequestFailed() =>
         new(UsageSnapshotStatus.RequestFailed, session: null, weekly: null);
+
+    /// <summary>Crea un resultado de "respuesta 2xx con contrato roto" (categoría 3, ver <see cref="UsageSnapshotStatus.MalformedResponse"/>).</summary>
+    public static UsageSnapshot MalformedResponse() =>
+        new(UsageSnapshotStatus.MalformedResponse, session: null, weekly: null);
 }

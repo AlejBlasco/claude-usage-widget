@@ -1,14 +1,24 @@
 @* Componente raíz inyectado como RootComponent del BlazorWebView. Crea su
    propio UsagePollingCoordinator (US-4), mantiene el último
    (RateLimitWindow Session, RateLimitWindow Weekly) calculado con
-   RateLimitWindowParser y renderiza dos UsageBar (US-2). *@
+   RateLimitWindowParser y renderiza dos UsageBar (US-2), o un único
+   ReauthNotice cuando el último UsageSnapshotStatus es Unauthorized
+   (US-1, F2). *@
 @implements IDisposable
 @inject IUsageDataSource UsageDataSource
+@inject ILogger<UsagePollingCoordinator> Logger
 
-<div class="usage-widget">
-    <UsageBar Title="Sesión" Window="@_session" Stale="@_isStale" />
-    <UsageBar Title="Semana" Window="@_weekly" Stale="@_isStale" />
-</div>
+@if (_status == UsageSnapshotStatus.Unauthorized)
+{
+    <ReauthNotice />
+}
+else
+{
+    <div class="usage-widget">
+        <UsageBar Title="Sesión" Window="@_session" Stale="@_isStale" />
+        <UsageBar Title="Semana" Window="@_weekly" Stale="@_isStale" />
+    </div>
+}
 
 @code {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
@@ -16,12 +26,13 @@
     private UsagePollingCoordinator? _coordinator;
     private RateLimitWindow _session = RateLimitWindow.Unavailable;
     private RateLimitWindow _weekly = RateLimitWindow.Unavailable;
+    private UsageSnapshotStatus? _status; // F2/US-1: se necesita el estado completo, no solo IsSuccess
     private bool _hasEverSucceeded;
     private bool _isStale;
 
     protected override void OnInitialized()
     {
-        _coordinator = new UsagePollingCoordinator(UsageDataSource, RefreshInterval);
+        _coordinator = new UsagePollingCoordinator(UsageDataSource, RefreshInterval, Logger);
         _coordinator.SnapshotReceived += OnSnapshotReceived;
         _coordinator.Start();
     }
@@ -55,8 +66,13 @@
     /// <summary><c>internal</c> + <c>InternalsVisibleTo</c>: expone si el poll subyacente sigue activo, para el test bUnit de "el timer se detiene al desmontar".</summary>
     internal bool IsPollingActiveForTests => _coordinator?.IsRunningForTests ?? false;
 
+    /// <summary><c>internal</c> + <c>InternalsVisibleTo</c>: expone el último <see cref="UsageSnapshotStatus"/> aplicado, para los tests bUnit de F2/US-1.</summary>
+    internal UsageSnapshotStatus? StatusForTests => _status;
+
     private void Apply(UsageSnapshot snapshot, DateTimeOffset now)
     {
+        _status = snapshot.Status; // F2/US-1
+
         var (session, weekly) = RateLimitWindowParser.ParseSnapshot(snapshot, now);
 
         if (snapshot.IsSuccess)
@@ -65,6 +81,14 @@
             _weekly = weekly;
             _isStale = false;
             _hasEverSucceeded = true;
+        }
+        else if (snapshot.Status == UsageSnapshotStatus.Unauthorized)
+        {
+            // AC 3 de US-1 (F2): nunca "(desactualizado)" — es una
+            // credencial inválida, no un dato viejo. El bloque @if de
+            // arriba ya sustituye las barras por ReauthNotice; no hace
+            // falta tocar _session/_weekly aquí.
+            _isStale = false;
         }
         else if (_hasEverSucceeded)
         {

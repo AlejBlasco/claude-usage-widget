@@ -50,7 +50,10 @@ verifying behavior.
 # Workflow
 
 1. Identify the units of behavior that need coverage: happy path, edge cases,
-   error/exception handling, boundary values.
+   error/exception handling, boundary values. If an implementation summary
+   or design doc points to a requirements document, read it too and list
+   every GIVEN-WHEN-THEN Acceptance Criteria — each one must map to at
+   least one test you write (see the traceability table in Output).
 2. Write/extend **unit tests** first, for all of the behavior identified
    above — these should never require a container or a full app bootstrap.
    Iterate on these quickly, running only the filtered unit-test subset
@@ -83,16 +86,31 @@ verifying behavior.
 ## Tests Added/Modified
 - `path/to/test/file` — <what it covers>
 
+## Trazabilidad AC → Test
+<one row per Acceptance Criteria found in the requirements/design doc; skip
+this table only if no requirements document was available as input>
+| Acceptance Criteria | Test(s) que lo cubre |
+|---|---|
+| GIVEN ... WHEN ... THEN ... | `TestClass.TestMethod` |
+
 ## Coverage Result
 - Target: <testingCoverage>%
 - Achieved: <measured %> (or "not measured — no coverage tool detected")
 
 ## Gaps / Not Covered
 - ... (or "None")
+
+## Definition of Done
+<copy the Definition of Done items from the requirements/design doc
+verbatim, marking each one [x] if your automated tests fully cover it, or
+[ ] PENDIENTE if it names a manual step (e.g. a real external API call)
+that no agent can execute — never mark a manual-validation item as done
+just because the surrounding automated tests pass>
 ```
 
-Finish with a short summary of the coverage achieved vs. the target, and
-remind the user that nothing has been committed or pushed.
+Finish with a short summary of the coverage achieved vs. the target, the
+Definition of Done status, and remind the user that nothing has been
+committed or pushed.
 
 # Ad hoc: Product Quality Audits
 

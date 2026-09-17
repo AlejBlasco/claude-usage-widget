@@ -105,18 +105,23 @@ public sealed class UsagePageTests : BunitContext
 
     [Theory]
     [InlineData(nameof(UsageSnapshotStatus.TokenUnavailable))]
-    [InlineData(nameof(UsageSnapshotStatus.Unauthorized))]
     [InlineData(nameof(UsageSnapshotStatus.RequestFailed))]
+    [InlineData(nameof(UsageSnapshotStatus.MalformedResponse))]
     public void UsagePage_ConSnapshotDeFalloYSinExitoPrevio_MuestraAmbasBarrasNoDisponible(string failureKind)
     {
+        // Nota F2: Unauthorized se excluyó deliberadamente de esta Theory --
+        // ya no renderiza UsageBar en absoluto (ver
+        // UsagePage_ConUnauthorizedYSinExitoPrevio_* más abajo). Mantenerlo
+        // aquí habría dejado Assert.All pasando de forma vacía (0
+        // elementos), sin verificar comportamiento real.
         Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
         var failureSnapshot = failureKind switch
         {
             nameof(UsageSnapshotStatus.TokenUnavailable) => UsageSnapshot.TokenUnavailable(),
-            nameof(UsageSnapshotStatus.Unauthorized) => UsageSnapshot.Unauthorized(),
             nameof(UsageSnapshotStatus.RequestFailed) => UsageSnapshot.RequestFailed(),
+            nameof(UsageSnapshotStatus.MalformedResponse) => UsageSnapshot.MalformedResponse(),
             _ => throw new ArgumentOutOfRangeException(nameof(failureKind)),
         };
 
@@ -124,13 +129,20 @@ public sealed class UsagePageTests : BunitContext
         cut.Render();
 
         var bars = cut.FindAll("div.usage-bar");
+        Assert.Equal(2, bars.Count);
         Assert.All(bars, bar => Assert.Contains("No disponible", bar.TextContent));
         Assert.DoesNotContain("desactualizado", cut.Markup);
+        Assert.Empty(cut.FindAll("div.usage-reauth"));
     }
 
     [Fact]
-    public void UsagePage_TrasUnCicloExitosoSeguidoDeUnFallo_ConservaElValorAnteriorMarcadoDesactualizado()
+    public void UsagePage_TrasUnCicloExitosoSeguidoDeUnFalloTransitorio_ConservaElValorAnteriorMarcadoDesactualizado()
     {
+        // F2: se usa RequestFailed (fallo transitorio) como estado de fallo,
+        // en vez de Unauthorized -- desde F2, Unauthorized ya no marca
+        // "(desactualizado)" (AC 3 de US-1, ver el test dedicado a
+        // Unauthorized más abajo); este test conserva el comportamiento
+        // original de F1 para el resto de fallos.
         Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
@@ -143,13 +155,58 @@ public sealed class UsagePageTests : BunitContext
         Assert.Contains("33%", cut.Markup);
         Assert.DoesNotContain("desactualizado", cut.Markup);
 
-        cut.InvokeAsync(() => cut.Instance.ApplyForTests(UsageSnapshot.Unauthorized(), Now));
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(UsageSnapshot.RequestFailed(), Now));
         cut.Render();
 
         // El AC exige conservar el último valor válido, marcado como
         // potencialmente desactualizado -- no debe caer a "No disponible".
         Assert.Contains("33%", cut.Markup);
         Assert.Contains("desactualizado", cut.Markup);
+    }
+
+    [Fact]
+    public void UsagePage_ConUnauthorizedYSinExitoPrevio_RenderizaReauthNoticeYOcultaLasBarras()
+    {
+        // AC de US-1 (F2): un 401/403 no es "sin datos" ni "desactualizado"
+        // -- sustituye por completo las dos UsageBar por ReauthNotice.
+        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        var cut = Render<UsagePage>();
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(UsageSnapshot.Unauthorized(), Now));
+        cut.Render();
+
+        Assert.Empty(cut.FindAll("div.usage-bar"));
+        var notice = cut.Find("div.usage-reauth");
+        Assert.Contains("Vuelve a iniciar sesión", notice.TextContent);
+        Assert.DoesNotContain("desactualizado", cut.Markup);
+        Assert.DoesNotContain("No disponible", cut.Markup);
+    }
+
+    [Fact]
+    public void UsagePage_ConUnauthorizedTrasUnCicloExitoso_SustituyeLasBarrasPorReauthNoticeSinMarcarDesactualizado()
+    {
+        // AC 3 de US-1 (F2): incluso habiendo mostrado datos válidos antes,
+        // un 401/403 nunca se trata como "dato viejo" (a diferencia de
+        // RequestFailed/TokenUnavailable/MalformedResponse tras un éxito
+        // previo, ver el test de arriba) -- las barras desaparecen del todo.
+        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        var cut = Render<UsagePage>();
+
+        var successSnapshot = UsageSnapshot.Success(
+            session: new RawRateLimitHeaders("allowed", "0.33", "0.67", null),
+            weekly: new RawRateLimitHeaders("allowed", "0.44", "0.56", null));
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(successSnapshot, Now));
+        cut.Render();
+        Assert.Contains("33%", cut.Markup);
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(UsageSnapshot.Unauthorized(), Now));
+        cut.Render();
+
+        Assert.Empty(cut.FindAll("div.usage-bar"));
+        Assert.DoesNotContain("33%", cut.Markup);
+        Assert.DoesNotContain("desactualizado", cut.Markup);
+        Assert.NotEmpty(cut.FindAll("div.usage-reauth"));
+        Assert.Equal(UsageSnapshotStatus.Unauthorized, cut.Instance.StatusForTests);
     }
 
     [Fact]

@@ -58,10 +58,36 @@ public sealed class UsageSnapshotTests
         Assert.False(result.IsSuccess);
     }
 
+    [Fact]
+    public void MalformedResponse_DevuelveStatusMalformedResponseSinSessionNiWeekly()
+    {
+        // F2/US-2: categoría 3 del modelo de reintento -- respuesta 2xx pero
+        // sin las cabeceras anthropic-ratelimit-unified-* mínimas esperadas.
+        // Distinto de RequestFailed (categoría 1, fallo transitorio):
+        // RetryingUsageDataSource nunca reintenta este estado.
+        var result = UsageSnapshot.MalformedResponse();
+
+        Assert.Equal(UsageSnapshotStatus.MalformedResponse, result.Status);
+        Assert.Null(result.Session);
+        Assert.Null(result.Weekly);
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public void MalformedResponse_EsUnEstadoDistintoDeRequestFailed()
+    {
+        // Ambos son "fallo" (IsSuccess == false), pero deben seguir siendo
+        // estados explícitamente distintos: es justo la distinción que
+        // introduce F2 para que el decorator de reintento pueda tratarlos
+        // de forma diferente.
+        Assert.NotEqual(UsageSnapshot.RequestFailed().Status, UsageSnapshot.MalformedResponse().Status);
+    }
+
     [Theory]
     [InlineData(UsageSnapshotStatus.TokenUnavailable)]
     [InlineData(UsageSnapshotStatus.Unauthorized)]
     [InlineData(UsageSnapshotStatus.RequestFailed)]
+    [InlineData(UsageSnapshotStatus.MalformedResponse)]
     public void IsSuccess_ParaCualquierEstadoDeFallo_EsSiempreFalse(UsageSnapshotStatus failureStatus)
     {
         var result = failureStatus switch
@@ -69,6 +95,7 @@ public sealed class UsageSnapshotTests
             UsageSnapshotStatus.TokenUnavailable => UsageSnapshot.TokenUnavailable(),
             UsageSnapshotStatus.Unauthorized => UsageSnapshot.Unauthorized(),
             UsageSnapshotStatus.RequestFailed => UsageSnapshot.RequestFailed(),
+            UsageSnapshotStatus.MalformedResponse => UsageSnapshot.MalformedResponse(),
             _ => throw new ArgumentOutOfRangeException(nameof(failureStatus)),
         };
 

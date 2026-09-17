@@ -108,8 +108,17 @@ stacks) or Azure — be specific>
 
 ## Follow-ups / Known Limitations
 - ...
+
+## Definition of Done — estado final
+<copy the Definition of Done items from the requirements/design/testing
+docs verbatim, marking each one [x] if genuinely satisfied, or [ ]
+PENDIENTE — DEL USUARIO if it names a manual step (e.g. a real external
+API call) nobody in the pipeline can execute. This is the last phase, so
+if any item is still open, say so plainly instead of letting the issue
+read as "done">
 ```
 
 Finish with a short summary reminding the user that **nothing has been
 committed, pushed, or deployed** — changes are in the working tree, and any
-live-environment action described above is theirs to trigger.
+live-environment action described above (including any pending
+Definition of Done item) is theirs to trigger.

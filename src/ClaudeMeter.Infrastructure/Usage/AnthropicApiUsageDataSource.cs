@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ClaudeMeter.Application.Abstractions;
 using ClaudeMeter.Domain.Usage;
+using Microsoft.Extensions.Logging;
 
 namespace ClaudeMeter.Infrastructure.Usage;
 
@@ -17,8 +18,11 @@ namespace ClaudeMeter.Infrastructure.Usage;
 /// la petición, enviarla y traducir la respuesta: no calcula countdowns
 /// ni porcentajes, ni lee el token directamente de ningún fichero (eso
 /// sigue siendo responsabilidad exclusiva de <see cref="ITokenProvider"/>),
-/// ni reintenta ante fallos transitorios (alcance de F2), ni intenta
-/// refrescar el token OAuth ante 401/403.
+/// ni reintenta ante fallos transitorios (delegado a
+/// <see cref="RetryingUsageDataSource"/>, F2), ni intenta refrescar el
+/// token OAuth ante 401/403. Registra cada intento HTTP individual con el
+/// detalle más rico que solo esta clase conoce (excepción de red, código de
+/// estado) — US-3 de F2.
 /// </summary>
 public sealed class AnthropicApiUsageDataSource : IUsageDataSource
 {
@@ -39,20 +43,26 @@ public sealed class AnthropicApiUsageDataSource : IUsageDataSource
 
     private readonly ITokenProvider _tokenProvider;
     private readonly HttpClient _httpClient;
+    private readonly ILogger<AnthropicApiUsageDataSource> _logger;
 
     /// <summary>
     /// Recibe tanto <see cref="ITokenProvider"/> como el <see cref="HttpClient"/>
-    /// ya construido (compartido, de larga vida) por constructor. La
-    /// creación/configuración del <see cref="HttpClient"/> (incluida su
-    /// vida útil como singleton) es responsabilidad del composition root
-    /// (Desktop, fuera de alcance de este issue) — ver el diseño para el
-    /// rationale de esta elección frente a <c>IHttpClientFactory</c> o un
-    /// <see cref="HttpClient"/> propio.
+    /// ya construido (compartido, de larga vida) por constructor, además de
+    /// un <see cref="ILogger{TCategoryName}"/> (F2/US-3) — Infrastructure
+    /// solo depende de la abstracción <c>Microsoft.Extensions.Logging</c>,
+    /// nunca de Serilog concreto. La creación/configuración del
+    /// <see cref="HttpClient"/> (incluida su vida útil como singleton) es
+    /// responsabilidad del composition root (Desktop, fuera de alcance de
+    /// este issue) — ver el diseño para el rationale de esta elección
+    /// frente a <c>IHttpClientFactory</c> o un <see cref="HttpClient"/>
+    /// propio.
     /// </summary>
-    public AnthropicApiUsageDataSource(ITokenProvider tokenProvider, HttpClient httpClient)
+    public AnthropicApiUsageDataSource(
+        ITokenProvider tokenProvider, HttpClient httpClient, ILogger<AnthropicApiUsageDataSource> logger)
     {
         _tokenProvider = tokenProvider;
         _httpClient = httpClient;
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -61,8 +71,13 @@ public sealed class AnthropicApiUsageDataSource : IUsageDataSource
         var tokenResult = await _tokenProvider.GetTokenAsync(cancellationToken);
         if (!tokenResult.IsSuccess)
         {
-            // Regla de CLAUDE.md / AC: sin token utilizable, nunca se
-            // realiza ninguna llamada HTTP.
+            // Warning, no Error: es un estado esperable antes del primer
+            // login (aún no hay token), no necesariamente un fallo real —
+            // a diferencia de Unauthorized (token presente pero rechazado
+            // por la API), que sí se registra como Error. Regla de
+            // CLAUDE.md / AC: sin token utilizable, nunca se realiza
+            // ninguna llamada HTTP.
+            _logger.LogWarning("No se pudo obtener un token OAuth utilizable; no se realiza ninguna llamada HTTP");
             return UsageSnapshot.TokenUnavailable();
         }
 
@@ -73,18 +88,20 @@ public sealed class AnthropicApiUsageDataSource : IUsageDataSource
         {
             response = await _httpClient.SendAsync(request, cancellationToken);
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
             // Error de red / DNS / conexión rechazada, etc.
+            _logger.LogWarning(ex, "Fallo de red llamando a la API de Anthropic");
             return UsageSnapshot.RequestFailed();
         }
-        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             // Timeout interno de HttpClient (no cancelación pedida por el
             // llamante) — se traduce como fallo de la petición. La
             // OperationCanceledException genuina (cancellationToken
             // solicitado) se propaga sin capturar, igual que en
             // CredentialsFileTokenProvider.
+            _logger.LogWarning(ex, "Timeout llamando a la API de Anthropic");
             return UsageSnapshot.RequestFailed();
         }
 
@@ -93,11 +110,14 @@ public sealed class AnthropicApiUsageDataSource : IUsageDataSource
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             {
                 // Nunca se intenta refrescar el token — regla de CLAUDE.md.
+                _logger.LogError(
+                    "La API de Anthropic devolvió {StatusCode}: token rechazado, no se reintenta", (int)response.StatusCode);
                 return UsageSnapshot.Unauthorized();
             }
 
             if (!response.IsSuccessStatusCode)
             {
+                _logger.LogWarning("La API de Anthropic devolvió {StatusCode}", (int)response.StatusCode);
                 return UsageSnapshot.RequestFailed();
             }
 
@@ -106,10 +126,14 @@ public sealed class AnthropicApiUsageDataSource : IUsageDataSource
 
             if (session.Status is null || weekly.Status is null)
             {
-                // 200 pero sin las cabeceras unified-* mínimas esperadas.
-                return UsageSnapshot.RequestFailed();
+                // 200 pero sin las cabeceras unified-* mínimas esperadas:
+                // contrato roto, no fallo de red (F2 — categoría 3 del
+                // modelo de reintento, nunca se reintenta este caso).
+                _logger.LogError("Respuesta 2xx sin las cabeceras anthropic-ratelimit-unified-* esperadas");
+                return UsageSnapshot.MalformedResponse();
             }
 
+            _logger.LogDebug("Snapshot de uso obtenido correctamente");
             return UsageSnapshot.Success(session, weekly);
         }
     }

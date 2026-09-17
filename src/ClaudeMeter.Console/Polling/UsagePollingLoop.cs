@@ -89,6 +89,15 @@ public sealed class UsagePollingLoop
             case UsageSnapshotStatus.RequestFailed:
                 _renderer.RenderRequestFailed(now);
                 break;
+            case UsageSnapshotStatus.MalformedResponse:
+                // Reutiliza el mismo renderer que RequestFailed (F2): desde
+                // la consola (F0), un contrato de API roto y un fallo de
+                // red se muestran igual ("no se pudieron obtener datos
+                // ahora mismo") — la distinción fina solo importa para
+                // decidir si reintentar (US-2, Infrastructure) y para el
+                // log (US-3), no para el texto de consola.
+                _renderer.RenderRequestFailed(now);
+                break;
         }
     }
 }

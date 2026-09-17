@@ -24,6 +24,22 @@ undocumented decisions.
    must state explicitly.
 3. Every non-trivial technology or pattern choice must include a short
    rationale and at least one alternative you considered and rejected.
+4. Never write a concrete literal you have not verified (a package/library
+   version, a model/API version id, an endpoint URL, a header name) from
+   memory alone when it can be checked. Try `WebSearch`/`WebFetch` against
+   the official source (e.g. the NuGet/npm page, the vendor's docs) first.
+   If you genuinely cannot verify it at design time, say so explicitly
+   (e.g. "usar la última versión estable disponible en el momento de
+   implementar") instead of inventing a plausible-looking placeholder that
+   someone could copy literally.
+5. Do not list something under "Risks & Open Decisions" just because more
+   than one reasonable technical approach exists. Decide implementation
+   details yourself (rounding strategy, exact regex/validation strictness,
+   internal class layout, test-scope boundaries...) and document the
+   rationale + rejected alternative inline where the decision is made.
+   Reserve "Risks & Open Decisions" for choices that need human sign-off
+   because they affect user-visible behavior, the public API surface, or
+   a genuine architectural trade-off with no clearly-better option.
 
 # Startup sequence
 
@@ -55,7 +71,21 @@ undocumented decisions.
    observability/logging, backward compatibility.
 5. Break the implementation into an ordered list of concrete steps/tasks that
    the Software Developer agent can follow directly.
-6. List risks, trade-offs, and open decisions that need human sign-off.
+6. **Name-collision sanity check (mandatory before closing the document):**
+   grep every new type, namespace, or project name you are about to
+   introduce against (a) the framework/BCL namespaces already in play in
+   this stack — e.g. in a WPF project, `System.Windows.Application`,
+   `Window`, `MessageBox`, `Clipboard`, or plain `Console`/`System.Console`
+   are common collision points for a badly-named project/namespace — and
+   (b) the existing projects/namespaces already under `src/`. Resolve any
+   collision explicitly in this document (e.g. a distinct `RootNamespace`,
+   a renamed type) rather than leaving it for the Development phase to
+   discover via a failed build.
+7. Carry forward the requirements document's **Definition of Done** as-is
+   (see Output below) — do not drop or silently resolve it; if design
+   decisions add a new step that would also require real external
+   validation no agent can run, append it there too.
+8. List risks, trade-offs, and open decisions that need human sign-off.
 
 # Output
 
@@ -88,6 +118,10 @@ Write a single markdown file to `<paths.design>/<kebab-case-title>.md`:
 
 ## Risks & Open Decisions
 - ...
+
+## Definition of Done
+<carried forward from the requirements document, unchanged unless this
+design adds a new step that also needs real external validation>
 ```
 
 Finish with a short summary and point the user to `sdlc-development` as the

@@ -3,9 +3,21 @@
     <ProjectReference Include="..\ClaudeMeter.Application\ClaudeMeter.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Última versión estable 8.0.x disponible en NuGet.org en el momento
+         de implementar F2 (verificada en
+         https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/index.json):
+         8.0.3, compatible con el TFM net8.0 ya fijado por
+         Directory.Build.props. Solo esta abstracción entra en
+         Infrastructure — nunca Serilog concreto (Clean Architecture, ver
+         documento de diseño de F2). -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- Permite que ClaudeMeter.Infrastructure.Tests use el constructor
          interno de CredentialsFileTokenProvider (ruta de fichero
-         inyectable solo para tests, sin exponerla públicamente). -->
+         inyectable solo para tests, sin exponerla públicamente) y el
+         constructor interno de RetryingUsageDataSource (función de espera
+         inyectable, F2/US-2). -->
     <InternalsVisibleTo Include="ClaudeMeter.Infrastructure.Tests" />
   </ItemGroup>
 </Project>
