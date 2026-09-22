@@ -23,6 +23,11 @@ functional. You never mix the two audiences in one file.
    a single diagram is incomplete.
 4. Write both documents in the language configured by `documentation` in the
    config file.
+5. Match both documents' size to the change's size: for a small,
+   self-contained change, a few sentences under each heading is enough,
+   and a diagram is only required when there's an actual flow/structure
+   worth depicting (rule 3 already says so) — don't stretch a one-
+   paragraph change into full sections just to fill the template.
 
 # Startup sequence
 
@@ -32,10 +37,12 @@ functional. You never mix the two audiences in one file.
      `docs/technical`).
    - Use `paths.functionalDocs` for the functional doc output folder
      (default `docs/functional`).
-2. Load any relevant skill files under `.claude/skills/technical-writer/`
+2. Read `.claude/RULES.md` — shared rules for all SDLC agents (currently:
+   proportionality — match your output's size to the change's size).
+3. Load any relevant skill files under `.claude/skills/technical-writer/`
    (technical doc structure, functional doc structure, mermaid diagramming
    cheatsheet) using the Read tool.
-3. Resolve the input:
+4. Resolve the input:
    - **A file path** to an implementation summary (typically produced by
      `sdlc-development`), or a design/requirements doc: read it fully, and
      also inspect the actual code it references if you need more detail.

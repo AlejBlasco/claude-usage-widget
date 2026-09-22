@@ -1,7 +1,10 @@
 using System.Net.Http;
 using System.Windows;
 using ClaudeMeter.Application.Abstractions;
+using ClaudeMeter.Desktop.Audio;
+using ClaudeMeter.Desktop.Configuration;
 using ClaudeMeter.Desktop.Logging;
+using ClaudeMeter.Desktop.Windowing;
 using ClaudeMeter.Infrastructure.Authentication;
 using ClaudeMeter.Infrastructure.Usage;
 using Microsoft.AspNetCore.Components.WebView.Wpf;
@@ -21,7 +24,9 @@ namespace ClaudeMeter.Desktop;
 /// inicializa Serilog (US-3) y compone la cadena real de
 /// <see cref="IUsageDataSource"/>: <see cref="AnthropicApiUsageDataSource"/>
 /// envuelta por <see cref="RetryingUsageDataSource"/> (US-2) — el único
-/// decorator que se registra como <see cref="IUsageDataSource"/>.
+/// decorator que se registra como <see cref="IUsageDataSource"/>. Desde
+/// F2/Ciclo B también registra <see cref="AppConfigStore"/>/<see cref="AppConfig"/>,
+/// <see cref="IChimePlayer"/> y <see cref="WindowDragService"/>.
 /// </summary>
 public partial class App : System.Windows.Application
 {
@@ -55,6 +60,15 @@ public partial class App : System.Windows.Application
             sp.GetRequiredService<AnthropicApiUsageDataSource>(),
             RetryPolicyOptions.Default,
             sp.GetRequiredService<ILogger<RetryingUsageDataSource>>()));
+
+        // F2/Ciclo B: config.json (US-1) y arrastre (US-2) — ver rationale
+        // de "AppConfigStore/AppConfig en Desktop, no como puerto de
+        // Application" y de "WindowDragService sin Window por constructor"
+        // en el documento de diseño.
+        services.AddSingleton<AppConfigStore>();
+        services.AddSingleton(sp => sp.GetRequiredService<AppConfigStore>().Load()); // AppConfig, resuelto una vez, perezosamente
+        services.AddSingleton<IChimePlayer, SystemSoundChimePlayer>();
+        services.AddSingleton<WindowDragService>();
 
         Services = services.BuildServiceProvider();
     }

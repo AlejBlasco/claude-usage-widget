@@ -1,24 +1,65 @@
 using Bunit;
 using ClaudeMeter.Application.Abstractions;
+using ClaudeMeter.Desktop.Audio;
+using ClaudeMeter.Desktop.Configuration;
 using ClaudeMeter.Desktop.Pages;
 using ClaudeMeter.Desktop.Tests.TestDoubles;
+using ClaudeMeter.Desktop.Windowing;
 using ClaudeMeter.Domain.Usage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ClaudeMeter.Desktop.Tests.Pages;
 
 /// <summary>
-/// Pruebas bUnit de <see cref="UsagePage"/> (US-2/US-4): montaje con
+/// Pruebas bUnit de <see cref="UsagePage"/> (US-2/US-4, y desde F2 Ciclo B
+/// también US-1 de config.json/chime y US-2 de arrastre): montaje con
 /// <see cref="IUsageDataSource"/> simulado, aplicación de snapshots vía los
 /// ganchos <c>internal</c> <c>ApplyForTests</c>/<c>IsPollingActiveForTests</c>
 /// (expuestos por diseño para no depender de un timer real de 60s), y
 /// verificación de que el componente libera su polling al desmontarse. Usa
 /// la API v2 de bUnit (<see cref="BunitContext"/> + <c>Render&lt;T&gt;</c> +
 /// <c>DisposeComponentsAsync()</c>), nunca la v1.
+///
+/// Desde F2 Ciclo B, <c>UsagePage</c> exige además <see cref="AppConfig"/>,
+/// <see cref="IChimePlayer"/>, <see cref="WindowDragService"/> e
+/// <see cref="IJSRuntime"/> vía <c>@inject</c> -- <see cref="RegisterCoreServices"/>
+/// centraliza ese registro (arreglo mecánico de compilación/wiring, mismo
+/// patrón ya usado en F2 Ciclo A con <c>NullLogger&lt;T&gt;.Instance</c>) para
+/// que los tests ya existentes de este fichero, que no verifican nada de
+/// config/chime/arrastre, sigan compilando y pasando sin cambiar su
+/// comportamiento. <see cref="BunitContext.JSInterop"/> se pone en modo
+/// <see cref="JSRuntimeMode.Loose"/> porque <c>OnAfterRenderAsync</c> invoca
+/// <c>claudeMeterDrag.init</c> vía JS interop en cada render -- ningún test
+/// de este fichero verifica ese listener JS en sí (requeriría un navegador
+/// real), solo que su registro no rompe el montaje del componente.
 /// </summary>
 public sealed class UsagePageTests : BunitContext
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 16, 10, 0, 0, TimeSpan.Zero);
+
+    /// <summary>
+    /// Registra <see cref="IUsageDataSource"/> (el doble bajo control del
+    /// test) más las tres dependencias nuevas de F2 Ciclo B que
+    /// <c>UsagePage</c> exige vía <c>@inject</c> y pone el JSInterop de
+    /// bUnit en modo Loose (US-2: el listener de arrastre no se verifica en
+    /// estos tests, solo no debe impedir el montaje). <paramref name="config"/>
+    /// por defecto usa <see cref="AppConfig.Default"/> (chime desactivado,
+    /// intervalo de 60s) para no alterar el comportamiento de los tests
+    /// preexistentes que no son sobre config/chime.
+    /// </summary>
+    private void RegisterCoreServices(IUsageDataSource dataSource, AppConfig? config = null, IChimePlayer? chimePlayer = null)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddSingleton(dataSource);
+        Services.AddSingleton(config ?? AppConfig.Default);
+        Services.AddSingleton(chimePlayer ?? new FakeChimePlayer());
+        // WindowDragService real, pero jamás se invoca BeginDrag() en estos
+        // tests bUnit (no hay gesto de ratón real) -- ver
+        // WindowDragServiceTests para la cobertura dedicada de esa clase.
+        Services.AddSingleton(new WindowDragService(
+            new AppConfigStore(NullLogger<AppConfigStore>.Instance), NullLogger<WindowDragService>.Instance));
+    }
 
     [Fact]
     public void UsagePage_AlMontarse_InvocaGetUsageAsyncYRenderizaElPrimerSnapshotDeExito()
@@ -29,7 +70,7 @@ public sealed class UsagePageTests : BunitContext
         var fake = new FakeUsageDataSource(UsageSnapshot.Success(
             new RawRateLimitHeaders("allowed", "0.10", "0.90", null),
             new RawRateLimitHeaders("allowed", "0.42", "0.58", null)));
-        Services.AddSingleton<IUsageDataSource>(fake);
+        RegisterCoreServices(fake);
 
         var cut = Render<UsagePage>();
 
@@ -47,7 +88,7 @@ public sealed class UsagePageTests : BunitContext
     [Fact]
     public void UsagePage_ConSnapshotSuccessYAmbosPercentages_MuestraDosBarrasConSuColor()
     {
-        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
         var snapshot = UsageSnapshot.Success(
@@ -69,7 +110,7 @@ public sealed class UsagePageTests : BunitContext
     public void UsagePage_ConAmbasVentanasEnElMismoUmbral_AplicaLaMismaClaseDeColorAAmbasBarras()
     {
         // AC de US-3: sesión y semana usan exactamente la misma regla de umbral.
-        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
         var snapshot = UsageSnapshot.Success(
@@ -87,7 +128,7 @@ public sealed class UsagePageTests : BunitContext
     [Fact]
     public void UsagePage_ConPercentageUsedNuloEnUnaVentana_MuestraEsaBarraComoNoDisponible()
     {
-        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
         var snapshot = UsageSnapshot.Success(
@@ -114,7 +155,7 @@ public sealed class UsagePageTests : BunitContext
         // UsagePage_ConUnauthorizedYSinExitoPrevio_* más abajo). Mantenerlo
         // aquí habría dejado Assert.All pasando de forma vacía (0
         // elementos), sin verificar comportamiento real.
-        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
         var failureSnapshot = failureKind switch
@@ -143,7 +184,7 @@ public sealed class UsagePageTests : BunitContext
         // "(desactualizado)" (AC 3 de US-1, ver el test dedicado a
         // Unauthorized más abajo); este test conserva el comportamiento
         // original de F1 para el resto de fallos.
-        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
         var successSnapshot = UsageSnapshot.Success(
@@ -169,7 +210,7 @@ public sealed class UsagePageTests : BunitContext
     {
         // AC de US-1 (F2): un 401/403 no es "sin datos" ni "desactualizado"
         // -- sustituye por completo las dos UsageBar por ReauthNotice.
-        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
         cut.InvokeAsync(() => cut.Instance.ApplyForTests(UsageSnapshot.Unauthorized(), Now));
@@ -189,7 +230,7 @@ public sealed class UsagePageTests : BunitContext
         // un 401/403 nunca se trata como "dato viejo" (a diferencia de
         // RequestFailed/TokenUnavailable/MalformedResponse tras un éxito
         // previo, ver el test de arriba) -- las barras desaparecen del todo.
-        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
         var successSnapshot = UsageSnapshot.Success(
@@ -212,7 +253,7 @@ public sealed class UsagePageTests : BunitContext
     [Fact]
     public void UsagePage_TrasDosCiclosConsecutivosConExito_MuestraSiempreElUltimoSnapshotSinMezclar()
     {
-        Services.AddSingleton<IUsageDataSource>(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
         var cut = Render<UsagePage>();
 
         var firstSnapshot = UsageSnapshot.Success(
@@ -241,7 +282,7 @@ public sealed class UsagePageTests : BunitContext
         // timer/temporizador subyacente se detiene y no queda programando
         // más llamadas HTTP.
         var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
-        Services.AddSingleton<IUsageDataSource>(fake);
+        RegisterCoreServices(fake);
         var cut = Render<UsagePage>();
         // Se guarda la referencia .NET directa al componente: tras
         // DisposeComponentsAsync(), bUnit ya no permite acceder a
@@ -256,5 +297,201 @@ public sealed class UsagePageTests : BunitContext
         await DisposeComponentsAsync();
 
         Assert.False(page.IsPollingActiveForTests);
+    }
+
+    [Fact]
+    public void UsagePage_ConIntervaloCortoEnAppConfig_LoUsaEnVezDeUnValorHardcodeado()
+    {
+        // F2 Ciclo B (US-1): el intervalo ya no es una constante interna
+        // fija (RefreshInterval, eliminada) -- viene de Config.PollingInterval.
+        // AppConfig.Default usa 60s, que nunca completaría un segundo ciclo
+        // dentro del timeout de este test; solo un intervalo corto inyectado
+        // explícitamente puede hacerlo, así que observar un segundo
+        // GetUsageAsync() aquí confirma que UsagePage reenvía de verdad
+        // Config.PollingInterval al UsagePollingCoordinator, en vez de
+        // ignorarlo.
+        var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
+        var shortIntervalConfig = AppConfig.Default with { PollingInterval = TimeSpan.FromMilliseconds(30) };
+        RegisterCoreServices(fake, config: shortIntervalConfig);
+
+        var cut = Render<UsagePage>();
+
+        cut.WaitForAssertion(() => Assert.True(fake.CallCount >= 2, $"CallCount fue {fake.CallCount}"), timeout: TimeSpan.FromSeconds(2));
+    }
+
+    private static UsageSnapshot CriticalSnapshot() => UsageSnapshot.Success(
+        session: new RawRateLimitHeaders("allowed", "0.95", "0.05", null), // 95% -> Crítico
+        weekly: new RawRateLimitHeaders("allowed", "0.10", "0.90", null)); // 10% -> Normal, no interfiere
+
+    private static UsageSnapshot NormalSnapshot() => UsageSnapshot.Success(
+        session: new RawRateLimitHeaders("allowed", "0.10", "0.90", null), // 10% -> Normal
+        weekly: new RawRateLimitHeaders("allowed", "0.10", "0.90", null));
+
+    [Fact]
+    public void UsagePage_ConTransicionDeNormalACriticalYChimeHabilitado_DisparaElChimeExactamenteUnaVez()
+    {
+        // AC principal de US-1: el chime suena al ENTRAR en Crítico.
+        var chimePlayer = new FakeChimePlayer();
+        RegisterCoreServices(
+            new FakeUsageDataSource(UsageSnapshot.RequestFailed()),
+            config: AppConfig.Default with { ChimeEnabled = true },
+            chimePlayer: chimePlayer);
+        var cut = Render<UsagePage>();
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(NormalSnapshot(), Now));
+        cut.Render();
+        Assert.Equal(0, chimePlayer.PlayCount);
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now));
+        cut.Render();
+        Assert.Equal(1, chimePlayer.PlayCount);
+    }
+
+    [Fact]
+    public void UsagePage_ConElEstadoCriticalQuePersisteEnElSiguienteCiclo_NoRepiteElChime()
+    {
+        // AC MÁS IMPORTANTE de US-1 (explícitamente señalado en el
+        // Implementation Plan de diseño): mientras el estado se mantenga en
+        // Crítico ciclo tras ciclo (sin una transición nueva), el chime NO
+        // debe volver a sonar -- solo una vez por entrada a Crítico.
+        var chimePlayer = new FakeChimePlayer();
+        RegisterCoreServices(
+            new FakeUsageDataSource(UsageSnapshot.RequestFailed()),
+            config: AppConfig.Default with { ChimeEnabled = true },
+            chimePlayer: chimePlayer);
+        var cut = Render<UsagePage>();
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now)); // primera entrada a Crítico
+        cut.Render();
+        Assert.Equal(1, chimePlayer.PlayCount);
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now)); // siguiente ciclo de poll, sigue en Crítico
+        cut.Render();
+        Assert.Equal(1, chimePlayer.PlayCount); // NO se repite
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now)); // un tercer ciclo, sigue igual
+        cut.Render();
+        Assert.Equal(1, chimePlayer.PlayCount);
+    }
+
+    [Fact]
+    public void UsagePage_ConChimeDeshabilitadoEnAppConfig_NuncaSuenaAunEnTransicionACritical()
+    {
+        var chimePlayer = new FakeChimePlayer();
+        RegisterCoreServices(
+            new FakeUsageDataSource(UsageSnapshot.RequestFailed()),
+            config: AppConfig.Default with { ChimeEnabled = false },
+            chimePlayer: chimePlayer);
+        var cut = Render<UsagePage>();
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(NormalSnapshot(), Now));
+        cut.Render();
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now));
+        cut.Render();
+
+        Assert.Equal(0, chimePlayer.PlayCount);
+    }
+
+    [Fact]
+    public void UsagePage_ConElPrimerSnapshotYaEnCriticalYChimeHabilitado_SuenaEnElPrimerCiclo()
+    {
+        // ThresholdTransition.EnteredCritical trata "sin lectura previa"
+        // (null) igual que "no era Crítico" -- la primerísima observación en
+        // rojo también debe avisar, no solo a partir de la segunda.
+        var chimePlayer = new FakeChimePlayer();
+        RegisterCoreServices(
+            new FakeUsageDataSource(UsageSnapshot.RequestFailed()),
+            config: AppConfig.Default with { ChimeEnabled = true },
+            chimePlayer: chimePlayer);
+        var cut = Render<UsagePage>();
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now));
+        cut.Render();
+
+        Assert.Equal(1, chimePlayer.PlayCount);
+    }
+
+    [Fact]
+    public void UsagePage_ConSoloLaVentanaSemanalEntrandoEnCritical_TambienDisparaElChime()
+    {
+        // El OR de UsagePage.razor evalúa la transición de sesión Y de
+        // semana por separado -- una transición a Crítico de CUALQUIERA de
+        // las dos debe disparar el chime, no solo la de sesión (ya cubierta
+        // por los tests de arriba).
+        var chimePlayer = new FakeChimePlayer();
+        RegisterCoreServices(
+            new FakeUsageDataSource(UsageSnapshot.RequestFailed()),
+            config: AppConfig.Default with { ChimeEnabled = true },
+            chimePlayer: chimePlayer);
+        var cut = Render<UsagePage>();
+
+        var sessionNormalWeeklyNormal = UsageSnapshot.Success(
+            session: new RawRateLimitHeaders("allowed", "0.10", "0.90", null),
+            weekly: new RawRateLimitHeaders("allowed", "0.10", "0.90", null));
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(sessionNormalWeeklyNormal, Now));
+        cut.Render();
+        Assert.Equal(0, chimePlayer.PlayCount);
+
+        var sessionNormalWeeklyCritical = UsageSnapshot.Success(
+            session: new RawRateLimitHeaders("allowed", "0.10", "0.90", null), // sigue Normal, no dispara por sí sola
+            weekly: new RawRateLimitHeaders("allowed", "0.95", "0.05", null)); // entra en Crítico
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(sessionNormalWeeklyCritical, Now));
+        cut.Render();
+
+        Assert.Equal(1, chimePlayer.PlayCount);
+    }
+
+    [Fact]
+    public void UsagePage_ConUnFalloTransitorioMientrasElUltimoEstadoEraCritical_NoReseteaLaDeteccionAlRecuperarse()
+    {
+        // Rationale explícito del propio código de producción (comentario en
+        // UsagePage.razor): el chime solo se evalúa sobre snapshots con
+        // éxito, para que un fallo transitorio de red no "resetee" la
+        // detección de transición y dispare un chime falso al recuperarse
+        // en el mismo estado Crítico.
+        var chimePlayer = new FakeChimePlayer();
+        RegisterCoreServices(
+            new FakeUsageDataSource(UsageSnapshot.RequestFailed()),
+            config: AppConfig.Default with { ChimeEnabled = true },
+            chimePlayer: chimePlayer);
+        var cut = Render<UsagePage>();
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now));
+        cut.Render();
+        Assert.Equal(1, chimePlayer.PlayCount);
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(UsageSnapshot.RequestFailed(), Now)); // fallo transitorio
+        cut.Render();
+        Assert.Equal(1, chimePlayer.PlayCount);
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now)); // se recupera, sigue en Crítico
+        cut.Render();
+        Assert.Equal(1, chimePlayer.PlayCount); // NO vuelve a sonar
+    }
+
+    [Fact]
+    public void UsagePage_ConTransicionCriticalANormalYDeVueltaACritical_SuenaDeNuevo()
+    {
+        // Comportamiento simétrico al AC de "no repetir": si el estado sale
+        // de Crítico y vuelve a entrar, sí es una transición nueva -- el
+        // chime debe volver a sonar.
+        var chimePlayer = new FakeChimePlayer();
+        RegisterCoreServices(
+            new FakeUsageDataSource(UsageSnapshot.RequestFailed()),
+            config: AppConfig.Default with { ChimeEnabled = true },
+            chimePlayer: chimePlayer);
+        var cut = Render<UsagePage>();
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now));
+        cut.Render();
+        Assert.Equal(1, chimePlayer.PlayCount);
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(NormalSnapshot(), Now));
+        cut.Render();
+        Assert.Equal(1, chimePlayer.PlayCount); // salir de Crítico no suena
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now));
+        cut.Render();
+        Assert.Equal(2, chimePlayer.PlayCount); // re-entrada: transición nueva
     }
 }

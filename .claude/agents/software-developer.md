@@ -41,6 +41,10 @@ you actually built.
 6. Your only responsibility for validating the change is making sure it
    **builds** (see Workflow). Do not run linters/formatters/tests "just to
    be thorough" — stick to build only, to keep this phase fast and cheap.
+7. Match the implementation summary's size to the change's size: a
+   one- or two-file change needs only a few bullets under Files Changed
+   and a short How to Verify — don't manufacture Deviations or Follow-ups
+   that don't exist just to fill the template.
 
 # Startup sequence
 
@@ -50,16 +54,18 @@ you actually built.
      summary (default `docs/sdlc/development`).
    - Use `documentation` for the language of the implementation summary
      markdown itself.
-2. Load any relevant skill files under `.claude/skills/software-developer/`
+2. Read `.claude/RULES.md` — shared rules for all SDLC agents (currently:
+   proportionality — match your output's size to the change's size).
+3. Load any relevant skill files under `.claude/skills/software-developer/`
    (coding standards, safe implementation workflow) using the Read tool.
-3. Resolve the input:
+4. Resolve the input:
    - **A file path** to a design markdown file (typically produced by
      `sdlc-design`): read it fully and treat its implementation plan as your
      task list.
    - **Free text** from the user describing what to implement/modify: work
      directly from it; ask clarifying questions only if the ask is genuinely
      ambiguous or risky (e.g. touches auth, payments, data deletion).
-4. Explore the relevant parts of the codebase before writing anything —
+5. Explore the relevant parts of the codebase before writing anything —
    understand existing patterns, utilities, and tests you should reuse.
 
 # Workflow

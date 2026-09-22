@@ -2,7 +2,7 @@
 
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)
 ![Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
-![Fase](https://img.shields.io/badge/roadmap-F1%20completada-brightgreen)
+![Fase](https://img.shields.io/badge/roadmap-F2%20completada-brightgreen)
 
 Widget de escritorio (Blazor Hybrid: WPF + `BlazorWebView`) que muestra en tiempo real el consumo de cuota de Claude Code — sesión, semana, countdown hasta el reset — sin salir del escritorio.
 
@@ -91,7 +91,12 @@ docs/   documentación generada por la pipeline SDLC
 
 Pendiente de validación manual (no automatizable por la pipeline SDLC, ver [`docs/sdlc/testing/f1-widget-visual-base.md`](./docs/sdlc/testing/f1-widget-visual-base.md)): comportamiento visual real de `MainWindow` en un equipo Windows, y estabilidad de memoria/handles en una ejecución prolongada (30-60 min).
 
-Siguiente fase: **F2 — robustez** ([#10](https://github.com/AlejBlasco/claude-usage-widget/issues/10)-[#13](https://github.com/AlejBlasco/claude-usage-widget/issues/13)) — manejo de 401/403 con aviso claro, reintentos con backoff, logging estructurado (Serilog), `config.json` (intervalo/posición/chime) y arrastrar el widget con el ratón para reposicionarlo. El cierre directo desde el propio widget queda para F3 ([#17](https://github.com/AlejBlasco/claude-usage-widget/issues/17)), junto al icono de bandeja y el click-through. Roadmap completo por fases en [`CLAUDE.md`](./CLAUDE.md).
+**F2 — robustez** ([#10](https://github.com/AlejBlasco/claude-usage-widget/issues/10)-[#13](https://github.com/AlejBlasco/claude-usage-widget/issues/13)), en dos ciclos SDLC:
+
+- **Ciclo A** — manejo de 401/403 con aviso claro en vez de refresco propio de token (`ReauthNotice`), reintentos con backoff ante fallos transitorios, logging estructurado (Serilog) a `%LOCALAPPDATA%\ClaudeMeter\logs`. 162 tests, 91.7-100% de cobertura en las clases de negocio nuevas. Detalle en [`docs/sdlc/technical/f2-robustez-ciclo-a.md`](./docs/sdlc/technical/f2-robustez-ciclo-a.md).
+- **Ciclo B** — `config.json` para intervalo de polling, posición inicial y chime activable/desactivable (umbral crítico, una sola vez por transición); arrastrar el widget con el ratón y persistir la nueva posición para el siguiente arranque. 216 tests, 94-100% de cobertura en las clases de negocio nuevas. Validado a mano en Windows real, incluyendo un mecanismo de arrastre corregido tres veces en vivo durante esa validación (`Window.DragMove()` no es compatible con `BlazorWebView`/WebView2 por un problema de captura de ratón entre procesos; sustituido por Pointer Events + `setPointerCapture` reenviando deltas por JS interop, más un fix de hit-test para un bug documentado de WPF+WebView2 con `AllowsTransparency`). Detalle técnico en [`docs/sdlc/technical/f2-robustez-ciclo-b.md`](./docs/sdlc/technical/f2-robustez-ciclo-b.md), explicación sin jerga en [`docs/functional/f2-robustez-ciclo-b.md`](./docs/functional/f2-robustez-ciclo-b.md).
+
+Siguiente fase: **F3 — UX + página Mascota** (milestone 4) — tema claro/oscuro, countdown animado, click-through configurable ([#16](https://github.com/AlejBlasco/claude-usage-widget/issues/16)), icono de bandeja con pausar/recargar/salir y cierre directo desde el propio widget ([#17](https://github.com/AlejBlasco/claude-usage-widget/issues/17); hoy no hay forma de cerrar el widget salvo desde el Administrador de tareas), `ScreenNavigator`/`IWidgetScreen` y `MascotPage.razor`. Roadmap completo por fases en [`CLAUDE.md`](./CLAUDE.md).
 
 ## Requisitos previos
 
@@ -105,13 +110,25 @@ dotnet build ClaudeMeter.sln
 dotnet test ClaudeMeter.sln
 ```
 
-## Ejecutar el widget (F1)
+## Ejecutar el widget
 
 ```bash
 dotnet run --project src/ClaudeMeter.Desktop
 ```
 
-Abre `MainWindow` sin bordes, siempre encima, anclada a la esquina inferior derecha del área de trabajo (ver [Vista previa](#vista-previa)). Con un `.credentials.json` válido, las barras de sesión/semana muestran porcentaje y color real, refrescándose solas cada 60s; sin token o con un 401/403, ambas barras muestran "No disponible" en vez de lanzar o dejar la ventana en blanco. No hay forma de cerrarla desde la propia ventana todavía — usa el Administrador de tareas hasta que llegue F3 (icono de bandeja + cierre directo desde el widget, [#17](https://github.com/AlejBlasco/claude-usage-widget/issues/17)).
+Abre `MainWindow` sin bordes, siempre encima, anclada por defecto a la esquina inferior derecha del área de trabajo (ver [Vista previa](#vista-previa)). Con un `.credentials.json` válido, las barras de sesión/semana muestran porcentaje y color real, refrescándose solas cada 60s; sin token o con un 401/403, ambas barras muestran "No disponible" en vez de lanzar o dejar la ventana en blanco.
+
+Desde F2/Ciclo B, `%LOCALAPPDATA%\ClaudeMeter\config.json` (opcional, se crea solo al soltar un arrastre) permite ajustar el intervalo de polling, la posición inicial y activar un chime al entrar en umbral crítico:
+
+```json
+{
+  "pollingIntervalSeconds": 60,
+  "chimeEnabled": false,
+  "windowPosition": { "left": 1200.0, "top": 800.0 }
+}
+```
+
+También puedes arrastrar el widget con el ratón a cualquier punto de la pantalla — la nueva posición se guarda sola en `config.json` al soltar, y el widget reaparece ahí en el siguiente arranque. No hay forma de cerrarla desde la propia ventana todavía — usa el Administrador de tareas hasta que llegue F3 (icono de bandeja + cierre directo desde el widget, [#17](https://github.com/AlejBlasco/claude-usage-widget/issues/17)).
 
 ## Probar la validación de F0 (consola)
 

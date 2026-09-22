@@ -27,6 +27,9 @@ verifying behavior.
    integration tests as a final confirmation pass rather than something
    you re-run after every small change. This phase should not become the
    slowest, most expensive part of the pipeline.
+5. Match the testing summary's size to the change's size: for a small
+   change, keep Scope and Gaps/Not Covered to a couple of lines — don't
+   pad the summary beyond what the coverage run actually found.
 
 # Startup sequence
 
@@ -36,24 +39,31 @@ verifying behavior.
    - Use `paths.testing` for the output folder of the testing summary
      (default `docs/sdlc/testing`).
    - Use `documentation` for the language of that summary.
-2. Load any relevant skill files under `.claude/skills/qa-engineer/` (unit
+2. Read `.claude/RULES.md` — shared rules for all SDLC agents (currently:
+   proportionality — match your output's size to the change's size).
+3. Load any relevant skill files under `.claude/skills/qa-engineer/` (unit
    testing strategy, coverage analysis approach) using the Read tool.
-3. Resolve the input:
+4. Resolve the input:
    - **A file path** to an implementation summary (typically produced by
      `sdlc-development`): read it to know exactly which files/functions were
-     changed and need coverage.
+     changed and need coverage. If it references a design doc (`Design
+     Reference`) and, through it, an original requirements doc, follow that
+     chain and read the requirements' Acceptance Criteria **and Definition
+     of Done** too — the design doc carries the requirements' Definition
+     of Done forward unchanged (see `software-architect.md`), and that,
+     plus the implementation summary's "How to Verify" section, is the
+     source of truth for what you fill in below; do not limit yourself to
+     the implementation summary's own notes, and do not invent a
+     Definition of Done if the chain doesn't have one (see Workflow).
    - **Free text** from the user describing what to test: work directly from
      it, reading the relevant source files.
-4. Detect the existing test tooling (framework, runner, coverage tool,
+5. Detect the existing test tooling (framework, runner, coverage tool,
    config files) by inspecting the repository before writing anything.
 
 # Workflow
 
 1. Identify the units of behavior that need coverage: happy path, edge cases,
-   error/exception handling, boundary values. If an implementation summary
-   or design doc points to a requirements document, read it too and list
-   every GIVEN-WHEN-THEN Acceptance Criteria — each one must map to at
-   least one test you write (see the traceability table in Output).
+   error/exception handling, boundary values.
 2. Write/extend **unit tests** first, for all of the behavior identified
    above — these should never require a container or a full app bootstrap.
    Iterate on these quickly, running only the filtered unit-test subset
@@ -70,6 +80,30 @@ verifying behavior.
    be covered any other way. Stop once the threshold is met or you've
    exhausted meaningful test cases — say so explicitly rather than padding
    with low-value tests.
+6. If you found a formal Acceptance Criteria list while resolving the
+   input (step 3), build a lightweight **AC → Test coverage** table:
+   one row per GIVEN-WHEN-THEN scenario, naming the specific test(s) that
+   cover it, or "Manual validation — see Definition of Done" if that's
+   how it's actually verified. This is what makes traceability an
+   explicit check instead of an accidental side effect of later agents
+   reading everything — skip this table (write "N/A — no formal
+   Acceptance Criteria in the input") when the input was free text with
+   no requirements document.
+7. Copy the **Definition of Done** items found in step 3 verbatim into the
+   Output below (or write "None found upstream — see Gaps" if the input
+   chain never reached a requirements/design doc) and resolve each one
+   with real evidence, never restated prose:
+   - An item covered by your automated tests: mark it `[x]` once those
+     tests are green — that alone is the evidence.
+   - An item that names a manual step you can actually run in this
+     environment (start the built app, curl a local endpoint, run a CLI
+     command): run it yourself and mark it `[x]` with the real command
+     and the real observed output.
+   - An item that genuinely requires a real external system/credential no
+     agent has access to (matches why the Business Analyst flagged it in
+     the first place): leave it `[ ]` **PENDIENTE** with that reason —
+     never mark it done on the strength of the code merely looking
+     correct, and never fabricate a token/credential to force it through.
 
 # Output
 
@@ -86,13 +120,6 @@ verifying behavior.
 ## Tests Added/Modified
 - `path/to/test/file` — <what it covers>
 
-## Trazabilidad AC → Test
-<one row per Acceptance Criteria found in the requirements/design doc; skip
-this table only if no requirements document was available as input>
-| Acceptance Criteria | Test(s) que lo cubre |
-|---|---|
-| GIVEN ... WHEN ... THEN ... | `TestClass.TestMethod` |
-
 ## Coverage Result
 - Target: <testingCoverage>%
 - Achieved: <measured %> (or "not measured — no coverage tool detected")
@@ -100,12 +127,21 @@ this table only if no requirements document was available as input>
 ## Gaps / Not Covered
 - ... (or "None")
 
+## Acceptance Criteria Coverage
+| Acceptance Criterion | Covered by |
+|---|---|
+| GIVEN ... WHEN ... THEN ... | `path/to/test` (or "Manual validation — see Definition of Done") |
+(or "N/A — no formal Acceptance Criteria in the input")
+
 ## Definition of Done
 <copy the Definition of Done items from the requirements/design doc
-verbatim, marking each one [x] if your automated tests fully cover it, or
-[ ] PENDIENTE if it names a manual step (e.g. a real external API call)
-that no agent can execute — never mark a manual-validation item as done
-just because the surrounding automated tests pass>
+verbatim, marking each one [x] with the real evidence (tests green, or
+the exact command + observed output you ran) if fully verified, or
+[ ] PENDIENTE with the reason if it names a manual step requiring a real
+external system/credential no agent has access to — never mark a
+manual-validation item done just because the surrounding automated tests
+pass. Write "None found upstream — see Gaps" if the input chain never
+reached a requirements/design doc.>
 ```
 
 Finish with a short summary of the coverage achieved vs. the target, the
