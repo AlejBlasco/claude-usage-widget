@@ -3,6 +3,7 @@ using ClaudeMeter.Application.Abstractions;
 using ClaudeMeter.Desktop.Audio;
 using ClaudeMeter.Desktop.Configuration;
 using ClaudeMeter.Desktop.Pages;
+using ClaudeMeter.Desktop.Polling;
 using ClaudeMeter.Desktop.Tests.TestDoubles;
 using ClaudeMeter.Desktop.Windowing;
 using ClaudeMeter.Domain.Usage;
@@ -63,6 +64,16 @@ public sealed class UsagePageTests : BunitContext
         // jamás se invoca en estos tests (no hay ResizeObserver real de
         // WebView2), solo no debe impedir el montaje.
         Services.AddSingleton(new WindowResizeService(NullLogger<WindowResizeService>.Instance));
+        // F3/Ciclo B: PollingControlService real -- UsagePage.OnInitialized()
+        // le adjunta su propio coordinador; los tests de pausa de este
+        // fichero recuperan esta misma instancia vía
+        // Services.GetRequiredService<PollingControlService>() para invocar
+        // Pause() sobre el coordinador real del componente bajo prueba.
+        Services.AddSingleton(new PollingControlService());
+        // WindowCloseService real, pero RequestClose() jamás se invoca en
+        // estos tests bUnit (no hay clic real sobre el botón de cierre) --
+        // ver WindowCloseServiceTests para la cobertura dedicada.
+        Services.AddSingleton(new WindowCloseService(NullLogger<WindowCloseService>.Instance));
     }
 
     [Fact]
@@ -537,5 +548,93 @@ public sealed class UsagePageTests : BunitContext
         var root = cut.Find("div.claudemeter-root");
         Assert.Contains("theme-light", root.ClassList);
         Assert.NotEmpty(cut.FindAll("div.usage-reauth"));
+    }
+
+    [Fact]
+    public void UsagePage_ConSnapshotSuccess_RenderizaElBotonDeCierreSiempreVisibleEnElMarkup()
+    {
+        // US-2 (F3/Ciclo B): el botón vive fuera del @if/else -- presente
+        // también cuando se renderizan las dos UsageBar, no solo sobre
+        // ReauthNotice (ver el test de Unauthorized más abajo).
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        var cut = Render<UsagePage>();
+
+        var closeButton = cut.Find("button.claudemeter-close");
+
+        Assert.Equal("Cerrar ClaudeMeter", closeButton.GetAttribute("aria-label"));
+    }
+
+    [Fact]
+    public void UsagePage_ConUnauthorized_TambienRenderizaElBotonDeCierreSobreReauthNotice()
+    {
+        // AC de US-2: el botón de cierre existe también cuando lo
+        // renderizado dentro de .claudemeter-root es ReauthNotice, no las
+        // dos UsageBar -- mismo criterio ya verificado para la clase de tema
+        // en UsagePage_ConTemaClaroYUnauthorized_....
+        RegisterCoreServices(new FakeUsageDataSource(UsageSnapshot.RequestFailed()));
+        var cut = Render<UsagePage>();
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(UsageSnapshot.Unauthorized(), Now));
+        cut.Render();
+
+        Assert.NotEmpty(cut.FindAll("button.claudemeter-close"));
+        Assert.NotEmpty(cut.FindAll("div.usage-reauth"));
+    }
+
+    [Fact]
+    public void UsagePage_AlPausarDesdePollingControlService_MarcaLasBarrasComoDesactualizadasSinPerderElUltimoValor()
+    {
+        // AC de "Pausar" (US-2, F3/Ciclo B): reutiliza el criterio visual
+        // "(desactualizado)" ya existente -- ningún tercer estado visual
+        // nuevo (ver Technology Choices del documento de diseño). Se
+        // recupera la misma instancia de PollingControlService que
+        // UsagePage.OnInitialized() ya adjuntó a su propio coordinador real,
+        // igual que haría TrayIconService desde fuera de Blazor.
+        var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
+        RegisterCoreServices(fake);
+        var cut = Render<UsagePage>();
+
+        var successSnapshot = UsageSnapshot.Success(
+            session: new RawRateLimitHeaders("allowed", "0.33", "0.67", null),
+            weekly: new RawRateLimitHeaders("allowed", "0.44", "0.56", null));
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(successSnapshot, Now));
+        cut.Render();
+        Assert.DoesNotContain("desactualizado", cut.Markup);
+
+        var pollingControl = Services.GetRequiredService<PollingControlService>();
+        pollingControl.Pause();
+
+        cut.WaitForAssertion(() => Assert.Contains("desactualizado", cut.Markup));
+        Assert.Contains("33%", cut.Markup); // conserva el último valor válido, no lo borra
+        Assert.True(pollingControl.IsPaused);
+    }
+
+    [Fact]
+    public async Task UsagePage_TrasDesmontarse_DesadjuntaSuCoordinadorDePollingControlService()
+    {
+        // AC implícita: PollingControlService no debe retener una instancia
+        // ya liberada tras Dispose() (mismo razonamiento que
+        // DetachCoordinator, ver PollingControlServiceTests para su
+        // cobertura xUnit dedicada) -- aquí se confirma específicamente que
+        // UsagePage.Dispose() la invoca de verdad. Mismo patrón async que
+        // UsagePage_TrasDesmontarse_DetieneElPollingSubyacente.
+        var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
+        RegisterCoreServices(fake);
+        var cut = Render<UsagePage>();
+        var pollingControl = Services.GetRequiredService<PollingControlService>();
+
+        await cut.InvokeAsync(() => cut.Instance.ApplyForTests(UsageSnapshot.RequestFailed(), Now));
+        cut.Render();
+
+        await DisposeComponentsAsync();
+
+        // Tras desmontarse, Pause() ya no debe tener ningún coordinador real
+        // al que aplicarse -- no lanza y no cambia IsPaused (mismo guard "sin
+        // coordinador adjunto" que PollingControlServiceTests verifica de
+        // forma aislada).
+        var exception = Record.Exception(() => pollingControl.Pause());
+
+        Assert.Null(exception);
+        Assert.False(pollingControl.IsPaused);
     }
 }

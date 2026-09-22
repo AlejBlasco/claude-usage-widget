@@ -175,4 +175,114 @@ public sealed class UsagePollingCoordinatorTests
         Assert.NotNull(lastReceived);
         Assert.True(lastReceived!.IsSuccess);
     }
+
+    [Fact]
+    public void Pause_DetieneElTimerSubyacenteSinDisponerLaInstancia()
+    {
+        // AC de "Pausar" (F3/Ciclo B): a diferencia de Dispose(), la
+        // instancia sigue viva -- Start() debe poder volver a invocarse
+        // después.
+        var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
+        coordinator.Start();
+
+        var exception = Record.Exception(() => coordinator.Pause());
+
+        Assert.Null(exception);
+        Assert.False(coordinator.IsRunningForTests);
+    }
+
+    [Fact]
+    public void Pause_LlamadoSinHaberArrancadoAntes_NoLanza()
+    {
+        // El icono de bandeja podría, en teoría, llegar a pausar antes de
+        // que el primer Start() del componente complete -- Pause() no debe
+        // asumir que el timer está corriendo.
+        var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
+
+        var exception = Record.Exception(() => coordinator.Pause());
+
+        Assert.Null(exception);
+        Assert.False(coordinator.IsRunningForTests);
+    }
+
+    [Fact]
+    public void Start_TrasPause_ReanudaElTimerYDisparaUnFetchInmediato()
+    {
+        // AC de "Reanudar": mismo comportamiento que el Start() inicial --
+        // dispara un fetch inmediato sin esperar a que se cumpla un ciclo
+        // completo del timer.
+        var fake = new FakeUsageDataSource(UsageSnapshot.Success(SampleHeaders, SampleHeaders));
+        using var firstSignal = new ManualResetEventSlim(initialState: false);
+        using var resumeSignal = new ManualResetEventSlim(initialState: false);
+        var receivedCount = 0;
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
+        coordinator.SnapshotReceived += (_, _) =>
+        {
+            if (Interlocked.Increment(ref receivedCount) == 1)
+            {
+                firstSignal.Set();
+            }
+            else
+            {
+                resumeSignal.Set();
+            }
+        };
+
+        coordinator.Start();
+        Assert.True(firstSignal.Wait(TimeSpan.FromSeconds(2)), "El fetch inicial de Start() no se disparó.");
+        coordinator.Pause();
+        Assert.False(coordinator.IsRunningForTests);
+
+        coordinator.Start(); // AC: "reanudar" == mismo comportamiento que Start() inicial
+
+        Assert.True(resumeSignal.Wait(TimeSpan.FromSeconds(2)), "Start() tras Pause() no disparó un fetch inmediato.");
+        Assert.True(coordinator.IsRunningForTests);
+        Assert.Equal(2, receivedCount);
+    }
+
+    [Fact]
+    public async Task PollNow_SinHaberLlamadoAStartAntes_DisparaGetUsageAsyncUnaVezSinTocarElTimer()
+    {
+        // AC de "Recargar": ciclo de poll adicional, "fuera de la cadencia
+        // normal del timer, sin reiniciar el propio timer" -- se comprueba
+        // aquí con el timer ni siquiera arrancado, para confirmar que
+        // PollNow() no lo arranca como efecto colateral.
+        var fake = new FakeUsageDataSource(UsageSnapshot.Success(SampleHeaders, SampleHeaders));
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
+
+        await coordinator.PollNow();
+
+        Assert.Equal(1, fake.CallCount);
+        Assert.False(coordinator.IsRunningForTests);
+    }
+
+    [Fact]
+    public async Task PollNow_ConUnPollYaEnVuelo_RespetaElGuardAntiSolapeYEsUnNoOp()
+    {
+        // Mismo guard _isPolling que ya protege al timer -- PollNow() (vía
+        // el menú "Recargar") no debe poder disparar una segunda llamada
+        // HTTP en paralelo con una ya en curso (manual o del propio timer).
+        var fake = new FakeUsageDataSource(UsageSnapshot.Success(SampleHeaders, SampleHeaders));
+        var blockingCall = fake.ArmBlockingCall();
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
+
+        var firstPoll = coordinator.PollNow();
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (fake.CallCount == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(5);
+        }
+        Assert.Equal(1, fake.CallCount);
+
+        var secondPoll = coordinator.PollNow(); // debe ser un no-op silencioso
+        await secondPoll;
+
+        Assert.Equal(1, fake.CallCount); // el segundo PollNow() no llegó a invocar GetUsageAsync
+
+        blockingCall.SetResult(UsageSnapshot.Success(SampleHeaders, SampleHeaders));
+        await firstPoll;
+    }
 }

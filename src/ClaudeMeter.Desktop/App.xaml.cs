@@ -4,6 +4,8 @@ using ClaudeMeter.Application.Abstractions;
 using ClaudeMeter.Desktop.Audio;
 using ClaudeMeter.Desktop.Configuration;
 using ClaudeMeter.Desktop.Logging;
+using ClaudeMeter.Desktop.Polling;
+using ClaudeMeter.Desktop.Tray;
 using ClaudeMeter.Desktop.Windowing;
 using ClaudeMeter.Infrastructure.Authentication;
 using ClaudeMeter.Infrastructure.Usage;
@@ -71,12 +73,28 @@ public partial class App : System.Windows.Application
         services.AddSingleton<WindowDragService>();
         services.AddSingleton<WindowResizeService>();
 
+        // F3/Ciclo B: click-through (US-1), cierre directo (US-2), puente
+        // de pausa/recarga (US-2) e icono de bandeja (US-2) — ver rationale
+        // completo en el documento de diseño.
+        services.AddSingleton<ClickThroughService>();
+        services.AddSingleton<WindowCloseService>();
+        services.AddSingleton<PollingControlService>();
+        services.AddSingleton<TrayIconService>();
+
         Services = services.BuildServiceProvider();
+
+        // US-2: al completarse OnStartup, el icono ya debe estar visible (AC).
+        Services.GetRequiredService<TrayIconService>().Initialize();
     }
 
     /// <inheritdoc />
     protected override void OnExit(ExitEventArgs e)
     {
+        // US-2: evita el icono huérfano en las tres vías de cierre (todas
+        // convergen aquí vía Application.Shutdown()) -- antes de cerrar
+        // logs, por si Dispose() necesitase registrar algo.
+        Services.GetRequiredService<TrayIconService>().Dispose();
+
         _httpClient?.Dispose();
         Log.CloseAndFlush(); // US-3: garantiza el volcado del sink de fichero
         base.OnExit(e);

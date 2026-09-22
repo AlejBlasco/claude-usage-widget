@@ -5,7 +5,10 @@
    ReauthNotice cuando el último UsageSnapshotStatus es Unauthorized
    (US-1, F2). Desde F2/Ciclo B lee el intervalo de poll de AppConfig
    (US-1), dispara IChimePlayer al entrar en umbral Crítico (US-1) y
-   registra el listener JS del gesto de arrastre (US-2). *@
+   registra el listener JS del gesto de arrastre (US-2). Desde F3/Ciclo B
+   adjunta su UsagePollingCoordinator a PollingControlService (para que el
+   icono de bandeja pueda Pausar/Reanudar/Recargar, US-2) y registra el
+   listener JS del botón de cierre directo (US-2). *@
 @implements IDisposable
 @inject IUsageDataSource UsageDataSource
 @inject ILogger<UsagePollingCoordinator> Logger
@@ -13,6 +16,8 @@
 @inject IChimePlayer ChimePlayer
 @inject WindowDragService DragService
 @inject WindowResizeService ResizeService
+@inject PollingControlService PollingControl
+@inject WindowCloseService CloseService
 @inject IJSRuntime JS
 @inject ILogger<UsagePage> PageLogger
 
@@ -24,6 +29,13 @@
    arranque (App.xaml.cs, sin cambios), consistente con el resto de
    AppConfig hoy -- sin recarga en caliente en este ciclo. *@
 <div class="claudemeter-root @Config.Theme.ToCssClass()">
+    @* F3/Ciclo B (US-2): botón siempre presente, fuera del @if/else, para
+       que exista también sobre ReauthNotice -- visible solo en hover/foco
+       vía CSS (app.css). El propio click-through (US-1) ya inhibe el gesto
+       sin guardas adicionales aquí (ver Technical Notes del documento de
+       requisitos). *@
+    <button type="button" class="claudemeter-close" aria-label="Cerrar ClaudeMeter">✕</button>
+
     @if (_status == UsageSnapshotStatus.Unauthorized)
     {
         <ReauthNotice />
@@ -41,6 +53,7 @@
     private UsagePollingCoordinator? _coordinator;
     private DotNetObjectReference<WindowDragService>? _dragServiceRef;
     private DotNetObjectReference<WindowResizeService>? _resizeServiceRef;
+    private DotNetObjectReference<WindowCloseService>? _closeServiceRef;
     private RateLimitWindow _session = RateLimitWindow.Unavailable;
     private RateLimitWindow _weekly = RateLimitWindow.Unavailable;
     private UsageSnapshotStatus? _status; // F2/US-1: se necesita el estado completo, no solo IsSuccess
@@ -54,6 +67,11 @@
         _coordinator = new UsagePollingCoordinator(UsageDataSource, Config.PollingInterval, Logger); // F2/Ciclo B: antes RefreshInterval hardcodeado
         _coordinator.SnapshotReceived += OnSnapshotReceived;
         _coordinator.Start();
+
+        // F3/Ciclo B (US-2): la instancia real que PollingControlService
+        // (icono de bandeja) usará para Pausar/Reanudar/Recargar.
+        PollingControl.AttachCoordinator(_coordinator);
+        PollingControl.PauseStateChanged += OnPauseStateChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -86,6 +104,17 @@
             {
                 PageLogger.LogError(ex, "No se pudo registrar el ajuste automático de altura (claudeMeterResize.init)");
             }
+
+            // F3/Ciclo B (US-2): registra el listener del botón de cierre directo.
+            _closeServiceRef = DotNetObjectReference.Create(CloseService);
+            try
+            {
+                await JS.InvokeVoidAsync("claudeMeterClose.init", _closeServiceRef);
+            }
+            catch (Exception ex)
+            {
+                PageLogger.LogError(ex, "No se pudo registrar el listener de cierre directo (claudeMeterClose.init)");
+            }
         }
     }
 
@@ -109,6 +138,26 @@
                 // renderer se destruya, así que no hay fuga — simplemente
                 // no queda nada más que hacer con esta última respuesta.
             }
+        });
+    }
+
+    /// <summary>
+    /// AC de US-2 (Pausar, F3/Ciclo B): reutiliza el criterio visual
+    /// "(desactualizado)" ya existente en vez de introducir un tercer estado
+    /// visual -- ver Technology Choices. Al reanudar, _isStale NO se fuerza
+    /// a false aquí: el fetch inmediato que dispara
+    /// PollingControlService.Resume() (Start() interno) lo actualizará por
+    /// el cauce normal (OnSnapshotReceived/Apply) en cuanto complete.
+    /// </summary>
+    private void OnPauseStateChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (PollingControl.IsPaused)
+            {
+                _isStale = true;
+            }
+            StateHasChanged();
         });
     }
 
@@ -178,10 +227,13 @@
     /// <inheritdoc />
     public void Dispose()
     {
+        PollingControl.PauseStateChanged -= OnPauseStateChanged;
         _dragServiceRef?.Dispose();
         _resizeServiceRef?.Dispose();
+        _closeServiceRef?.Dispose();
         if (_coordinator is not null)
         {
+            PollingControl.DetachCoordinator(_coordinator);
             _coordinator.SnapshotReceived -= OnSnapshotReceived;
             _coordinator.Dispose();
         }
