@@ -47,5 +47,9 @@ public partial class MainWindow : Window
         // US-2: la misma instancia que UsagePage.razor usará para registrar
         // el listener de JS interop de arrastre.
         app.Services.GetRequiredService<WindowDragService>().AttachWindow(this);
+
+        // F3/Ciclo A: idem para el ajuste automático de altura al contenido
+        // real (ver WindowResizeService para el rationale completo).
+        app.Services.GetRequiredService<WindowResizeService>().AttachWindow(this);
     }
 }

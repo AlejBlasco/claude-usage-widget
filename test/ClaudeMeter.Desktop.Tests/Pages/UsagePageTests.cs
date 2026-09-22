@@ -59,6 +59,10 @@ public sealed class UsagePageTests : BunitContext
         // WindowDragServiceTests para la cobertura dedicada de esa clase.
         Services.AddSingleton(new WindowDragService(
             new AppConfigStore(NullLogger<AppConfigStore>.Instance), NullLogger<WindowDragService>.Instance));
+        // F3/Ciclo A: idem para WindowResizeService -- SetContentHeight()
+        // jamás se invoca en estos tests (no hay ResizeObserver real de
+        // WebView2), solo no debe impedir el montaje.
+        Services.AddSingleton(new WindowResizeService(NullLogger<WindowResizeService>.Instance));
     }
 
     [Fact]
@@ -493,5 +497,45 @@ public sealed class UsagePageTests : BunitContext
         cut.InvokeAsync(() => cut.Instance.ApplyForTests(CriticalSnapshot(), Now));
         cut.Render();
         Assert.Equal(2, chimePlayer.PlayCount); // re-entrada: transición nueva
+    }
+
+    [Theory]
+    [InlineData(AppTheme.Dark, "theme-dark")]
+    [InlineData(AppTheme.Light, "theme-light")]
+    public void UsagePage_ConTemaEnAppConfig_AplicaLaClaseCssCorrespondienteAlContenedorRaiz(
+        AppTheme theme, string expectedCssClass)
+    {
+        // AC de US-1 (F3/Ciclo A): la clase CSS de .claudemeter-root
+        // corresponde exactamente a Config.Theme.ToCssClass() -- única
+        // fuente de verdad del mapeo enum -> clase CSS.
+        RegisterCoreServices(
+            new FakeUsageDataSource(UsageSnapshot.RequestFailed()),
+            config: AppConfig.Default with { Theme = theme });
+
+        var cut = Render<UsagePage>();
+
+        var root = cut.Find("div.claudemeter-root");
+        Assert.Contains(expectedCssClass, root.ClassList);
+    }
+
+    [Fact]
+    public void UsagePage_ConTemaClaroYUnauthorized_AplicaLaClaseDeTemaTambienCuandoSeRenderizaReauthNotice()
+    {
+        // AC de US-1: ambas superficies (UsageBar/ReauthNotice) deben
+        // reflejar el tema de forma consistente -- .claudemeter-root
+        // envuelve el @if/else completo, así que la clase de tema debe
+        // seguir aplicada incluso cuando lo que se renderiza dentro es
+        // ReauthNotice en vez de las dos UsageBar.
+        RegisterCoreServices(
+            new FakeUsageDataSource(UsageSnapshot.RequestFailed()),
+            config: AppConfig.Default with { Theme = AppTheme.Light });
+        var cut = Render<UsagePage>();
+
+        cut.InvokeAsync(() => cut.Instance.ApplyForTests(UsageSnapshot.Unauthorized(), Now));
+        cut.Render();
+
+        var root = cut.Find("div.claudemeter-root");
+        Assert.Contains("theme-light", root.ClassList);
+        Assert.NotEmpty(cut.FindAll("div.usage-reauth"));
     }
 }

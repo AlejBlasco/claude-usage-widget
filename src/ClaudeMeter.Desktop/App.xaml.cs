@@ -69,6 +69,7 @@ public partial class App : System.Windows.Application
         services.AddSingleton(sp => sp.GetRequiredService<AppConfigStore>().Load()); // AppConfig, resuelto una vez, perezosamente
         services.AddSingleton<IChimePlayer, SystemSoundChimePlayer>();
         services.AddSingleton<WindowDragService>();
+        services.AddSingleton<WindowResizeService>();
 
         Services = services.BuildServiceProvider();
     }

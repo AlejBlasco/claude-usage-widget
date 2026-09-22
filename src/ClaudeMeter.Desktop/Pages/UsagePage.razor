@@ -12,24 +12,35 @@
 @inject AppConfig Config
 @inject IChimePlayer ChimePlayer
 @inject WindowDragService DragService
+@inject WindowResizeService ResizeService
 @inject IJSRuntime JS
 @inject ILogger<UsagePage> PageLogger
 
-@if (_status == UsageSnapshotStatus.Unauthorized)
-{
-    <ReauthNotice />
-}
-else
-{
-    <div class="usage-widget">
-        <UsageBar Title="Sesión" Window="@_session" Stale="@_isStale" />
-        <UsageBar Title="Semana" Window="@_weekly" Stale="@_isStale" />
-    </div>
-}
+@* F3/Ciclo A (US-1): .claudemeter-root envuelve TODO el contenido que
+   UsagePage puede renderizar (ReauthNotice y .usage-widget), aplicando la
+   clase de tema una única vez -- cubre el AC "ambas superficies (UsagePage/
+   UsageBar y ReauthNotice) reflejan el tema de forma consistente" con un
+   solo punto de aplicación. Config.Theme se resuelve una única vez en el
+   arranque (App.xaml.cs, sin cambios), consistente con el resto de
+   AppConfig hoy -- sin recarga en caliente en este ciclo. *@
+<div class="claudemeter-root @Config.Theme.ToCssClass()">
+    @if (_status == UsageSnapshotStatus.Unauthorized)
+    {
+        <ReauthNotice />
+    }
+    else
+    {
+        <div class="usage-widget">
+            <UsageBar Title="Sesión" Window="@_session" Stale="@_isStale" />
+            <UsageBar Title="Semana" Window="@_weekly" Stale="@_isStale" />
+        </div>
+    }
+</div>
 
 @code {
     private UsagePollingCoordinator? _coordinator;
     private DotNetObjectReference<WindowDragService>? _dragServiceRef;
+    private DotNetObjectReference<WindowResizeService>? _resizeServiceRef;
     private RateLimitWindow _session = RateLimitWindow.Unavailable;
     private RateLimitWindow _weekly = RateLimitWindow.Unavailable;
     private UsageSnapshotStatus? _status; // F2/US-1: se necesita el estado completo, no solo IsSuccess
@@ -62,6 +73,18 @@ else
                 // nada), pero si el interop JS falla aquí, el usuario se
                 // queda sin arrastre de forma silenciosa si no se registra.
                 PageLogger.LogError(ex, "No se pudo registrar el listener de arrastre (claudeMeterDrag.init)");
+            }
+
+            // F3/Ciclo A: registra el ResizeObserver que mantiene la ventana
+            // ajustada a la altura real del contenido (ver WindowResizeService).
+            _resizeServiceRef = DotNetObjectReference.Create(ResizeService);
+            try
+            {
+                await JS.InvokeVoidAsync("claudeMeterResize.init", _resizeServiceRef);
+            }
+            catch (Exception ex)
+            {
+                PageLogger.LogError(ex, "No se pudo registrar el ajuste automático de altura (claudeMeterResize.init)");
             }
         }
     }
@@ -156,6 +179,7 @@ else
     public void Dispose()
     {
         _dragServiceRef?.Dispose();
+        _resizeServiceRef?.Dispose();
         if (_coordinator is not null)
         {
             _coordinator.SnapshotReceived -= OnSnapshotReceived;

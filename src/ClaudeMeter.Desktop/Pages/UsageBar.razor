@@ -1,6 +1,7 @@
 @* Componente hijo reutilizado para la barra de sesión y de semana: única
    fuente de la barra + etiqueta + color, para garantizar que ambas usan
    exactamente la misma regla de umbral (AC de US-3). *@
+@using ClaudeMeter.Desktop.Rendering
 
 <div class="usage-bar usage-bar--@ColorClass">
     <span class="usage-bar__title">@Title</span>
@@ -16,6 +17,21 @@
     else
     {
         <span class="usage-bar__value usage-bar__value--unavailable">No disponible</span>
+    }
+    @if (Window.MinutesRemaining is { } minutes)
+    {
+        @* F3/Ciclo A (US-2): @key="minutes" fuerza a Blazor a destruir y
+           recrear este <span> cada vez que MinutesRemaining cambia entre
+           renders (en vez de parchear el texto in-place), lo que dispara
+           la animación @keyframes de app.css en cada ciclo con un valor
+           distinto -- ver Technology Choices para el rationale verificado
+           contra la documentación oficial de Blazor. Cuando
+           MinutesRemaining es null (sin datos), este bloque no se
+           renderiza en absoluto: no se intenta animar ningún valor
+           ausente (AC de US-2). *@
+        <span class="usage-bar__countdown" @key="minutes">
+            Restablece en @CountdownFormatter.Format(minutes)
+        </span>
     }
 </div>
 
