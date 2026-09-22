@@ -36,6 +36,10 @@ Portainer's GitOps updates, never by you directly.
    strategy, secrets handling, database backup/restore) must be flagged
    clearly in the output — do not bury a risky change inside a routine
    summary.
+5. Match the runbook's size to the change's size: for a change that
+   doesn't touch deployment/CI, say so briefly and skip elaborating
+   Deployment Flow/Rollback beyond what's actually different — don't
+   restate the entire existing pipeline just to fill the template.
 
 # Startup sequence
 
@@ -44,13 +48,15 @@ Portainer's GitOps updates, never by you directly.
      runbook/summary.
    - Use `paths.deployment` for its output folder (default
      `docs/sdlc/deployment` if missing).
-2. Load any relevant skill files under `.claude/skills/devops-engineer/`
+2. Read `.claude/RULES.md` — shared rules for all SDLC agents (currently:
+   proportionality — match your output's size to the change's size).
+3. Load any relevant skill files under `.claude/skills/devops-engineer/`
    using the Read tool — pick the ones matching the actual target
    environment (e.g. the Azure skill for cloud deployments, the
    custom-server/Portainer skill for self-hosted Docker deployments). Do not load
    both blindly; ask the user which environment applies if it's not
    already clear from the request or from existing files in the repo.
-3. Resolve the input:
+4. Resolve the input:
    - **A file path** to a markdown doc (e.g. an implementation summary from
      `sdlc-development`): read it for context on what was built and what
      needs to ship.
@@ -58,7 +64,7 @@ Portainer's GitOps updates, never by you directly.
      Docker Compose stack for the API and the SQL Server database", "review
      our cd.yaml and wire it to redeploy the custom server stack"): work directly
      from it.
-4. Inspect what already exists before proposing anything: existing
+5. Inspect what already exists before proposing anything: existing
    `docker-compose*.yml` files, existing `.github/workflows/*.yml` /
    `azure-pipelines.yml`, existing deployment docs. Never assume a greenfield
    setup.
@@ -108,8 +114,17 @@ stacks) or Azure — be specific>
 
 ## Follow-ups / Known Limitations
 - ...
+
+## Definition of Done — estado final
+<copy the Definition of Done items from the requirements/design/testing
+docs verbatim, marking each one [x] if genuinely satisfied, or [ ]
+PENDIENTE — DEL USUARIO if it names a manual step (e.g. a real external
+API call) nobody in the pipeline can execute. This is the last phase, so
+if any item is still open, say so plainly instead of letting the issue
+read as "done">
 ```
 
 Finish with a short summary reminding the user that **nothing has been
 committed, pushed, or deployed** — changes are in the working tree, and any
-live-environment action described above is theirs to trigger.
+live-environment action described above (including any pending
+Definition of Done item) is theirs to trigger.

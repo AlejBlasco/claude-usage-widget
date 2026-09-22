@@ -1,0 +1,14 @@
+@* Mensaje explícito de "hay que volver a autenticarse" (US-1, F2), visual y
+   textualmente distinto de "No disponible" (UsageBar) y sin el sufijo
+   "(desactualizado)" que sí aplica a un RequestFailed/TokenUnavailable
+   tras un éxito previo. Sustituye por completo a las dos UsageBar en
+   UsagePage cuando Status == Unauthorized — nunca se muestra junto a
+   ellas (AC de US-1: un 401/403 no es un dato desactualizado, es una
+   credencial inválida). *@
+
+<div class="usage-reauth">
+    <span class="usage-reauth__icon" aria-hidden="true">⚠</span>
+    <span class="usage-reauth__message">
+        Vuelve a iniciar sesión en Claude Code para seguir viendo tu consumo.
+    </span>
+</div>

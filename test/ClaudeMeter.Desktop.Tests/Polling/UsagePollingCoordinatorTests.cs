@@ -1,6 +1,7 @@
 using ClaudeMeter.Desktop.Polling;
 using ClaudeMeter.Desktop.Tests.TestDoubles;
 using ClaudeMeter.Domain.Usage;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ClaudeMeter.Desktop.Tests.Polling;
 
@@ -11,7 +12,10 @@ namespace ClaudeMeter.Desktop.Tests.Polling;
 /// C# plana sin ninguna dependencia de Blazor/WPF. Usa
 /// <see cref="FakeUsageDataSource"/> para no depender de red ni de un
 /// timer real de 60s (intervalos largos + los ganchos
-/// <c>internal</c>/<c>ForTests</c> ya expuestos por el diseño).
+/// <c>internal</c>/<c>ForTests</c> ya expuestos por el diseño). El tercer
+/// parámetro del constructor (<see cref="ILogger{TCategoryName}"/>, F2/US-3)
+/// se satisface siempre con <see cref="NullLogger{T}.Instance"/> -- ningún
+/// test de esta clase verifica logging, solo la orquestación del poll.
 /// </summary>
 public sealed class UsagePollingCoordinatorTests
 {
@@ -29,7 +33,7 @@ public sealed class UsagePollingCoordinatorTests
         using var signal = new ManualResetEventSlim(initialState: false);
         UsageSnapshot? received = null;
 
-        using var coordinator = new UsagePollingCoordinator(fake, LongInterval);
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
         coordinator.SnapshotReceived += (snapshot, _) =>
         {
             received = snapshot;
@@ -47,7 +51,7 @@ public sealed class UsagePollingCoordinatorTests
     public void Start_DejaElTimerSubyacenteActivo()
     {
         var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
-        using var coordinator = new UsagePollingCoordinator(fake, LongInterval);
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
 
         coordinator.Start();
 
@@ -58,7 +62,7 @@ public sealed class UsagePollingCoordinatorTests
     public void Dispose_DetieneElTimerSubyacente()
     {
         var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
-        var coordinator = new UsagePollingCoordinator(fake, LongInterval);
+        var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
         coordinator.Start();
 
         coordinator.Dispose();
@@ -74,7 +78,7 @@ public sealed class UsagePollingCoordinatorTests
         // plausible en el ciclo de vida real de un componente Razor si
         // Dispose() se disparase más de una vez durante el desmontaje.
         var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
-        var coordinator = new UsagePollingCoordinator(fake, LongInterval);
+        var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
         coordinator.Start();
 
         coordinator.Dispose();
@@ -93,7 +97,7 @@ public sealed class UsagePollingCoordinatorTests
         // temporización exacta.
         var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
         var receivedCount = 0;
-        var coordinator = new UsagePollingCoordinator(fake, TimeSpan.FromMilliseconds(25));
+        var coordinator = new UsagePollingCoordinator(fake, TimeSpan.FromMilliseconds(25), NullLogger<UsagePollingCoordinator>.Instance);
         coordinator.SnapshotReceived += (_, _) => Interlocked.Increment(ref receivedCount);
 
         coordinator.Start();
@@ -115,7 +119,7 @@ public sealed class UsagePollingCoordinatorTests
         // AC de US-4: "nunca dos timers/llamadas en paralelo".
         var fake = new FakeUsageDataSource(UsageSnapshot.Success(SampleHeaders, SampleHeaders));
         var blockingCall = fake.ArmBlockingCall();
-        using var coordinator = new UsagePollingCoordinator(fake, LongInterval);
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
 
         var firstPoll = coordinator.PollOnceForTestsAsync(); // se queda "en vuelo" hasta que se resuelva blockingCall.
 
@@ -146,7 +150,7 @@ public sealed class UsagePollingCoordinatorTests
         var fake = new FakeUsageDataSource(UsageSnapshot.RequestFailed());
         fake.SetNextException(new InvalidOperationException("fallo inesperado simulado"));
         var eventFired = false;
-        using var coordinator = new UsagePollingCoordinator(fake, LongInterval);
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
         coordinator.SnapshotReceived += (_, _) => eventFired = true;
 
         var exception = await Record.ExceptionAsync(() => coordinator.PollOnceForTestsAsync());
@@ -162,7 +166,7 @@ public sealed class UsagePollingCoordinatorTests
         fake.SetNextException(new InvalidOperationException("fallo transitorio simulado"));
         fake.SetNextResult(UsageSnapshot.Success(SampleHeaders, SampleHeaders));
         UsageSnapshot? lastReceived = null;
-        using var coordinator = new UsagePollingCoordinator(fake, LongInterval);
+        using var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
         coordinator.SnapshotReceived += (snapshot, _) => lastReceived = snapshot;
 
         await coordinator.PollOnceForTestsAsync(); // lanza y se traga la excepción, sin evento.

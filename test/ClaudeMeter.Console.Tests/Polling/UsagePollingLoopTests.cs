@@ -105,6 +105,27 @@ public sealed class UsagePollingLoopTests
     }
 
     [Fact]
+    public async Task ExecuteIterationAsync_ConMalformedResponse_ReutilizaRenderRequestFailed()
+    {
+        // Arrange: F2 -- nuevo caso UsageSnapshotStatus.MalformedResponse
+        // (2xx sin cabeceras unified-* esperadas). El diseño fija
+        // explícitamente que la consola reutiliza RenderRequestFailed (sin
+        // método de renderer nuevo): desde este nivel, un contrato de API
+        // roto y un fallo de red se muestran igual.
+        var dataSource = FakeUsageDataSource.Returning(UsageSnapshot.MalformedResponse());
+        var renderer = new SpyUsagePollingRenderer();
+        var sut = new UsagePollingLoop(dataSource, renderer, TimeSpan.FromSeconds(60));
+
+        // Act
+        await sut.ExecuteIterationAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(1, renderer.RenderRequestFailedCallCount);
+        Assert.Equal(1, renderer.TotalCallCount);
+        Assert.Equal(0, renderer.RenderUnexpectedErrorCallCount);
+    }
+
+    [Fact]
     public async Task ExecuteIterationAsync_AnteExcepcionInesperadaDelDataSource_LaCapturaYLlamaARenderUnexpectedErrorSinPropagar()
     {
         // Arrange: este es el test que prueba directamente el criterio de

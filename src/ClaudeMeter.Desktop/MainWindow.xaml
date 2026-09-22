@@ -17,6 +17,20 @@
         ShowInTaskbar="False"
         WindowStartupLocation="Manual">
     <Grid>
+        <!-- Bug conocido de WPF+WebView2 con AllowsTransparency="True": los
+             clics sobre el WebView2 lo atraviesan hacia el escritorio
+             (dotnet/maui#9024, MicrosoftEdge/WebView2Feedback#997). La causa
+             real no es el hit-test interno de WPF, sino que AllowsTransparency
+             compone la ventana con UpdateLayeredWindow: el SO decide si el
+             clic pertenece a esta ventana según el alpha del píxel
+             renderizado ANTES de que WPF llegue a hacer su propio hit-test, y
+             "Transparent" (#00FFFFFF) tiene alpha 0 -> el SO lo trata como
+             clic-through igualmente. #01000000 (alpha 1/255, imperceptible)
+             mantiene el widget visualmente igual pero hace que todo el
+             rectángulo cuente como opaco para el SO, así que el WebView2 sí
+             recibe el ratón (click-through real queda para el modo
+             configurable de F3, issue #16 — hoy no debe existir). -->
+        <Rectangle Fill="#01000000" />
         <blazor:BlazorWebView x:Name="BlazorWebViewHost"
                               HostPage="wwwroot\index.html">
             <blazor:BlazorWebView.RootComponents>

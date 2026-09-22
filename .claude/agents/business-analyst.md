@@ -28,6 +28,28 @@ and leave the "how" to the Software Architect and Software Developer agents.
 3. Every functional requirement you produce must be expressed using the
    **GIVEN-WHEN-THEN** pattern so it is directly usable as acceptance
    criteria / test scenarios.
+4. Before writing any concrete literal fact you are not 100% certain of
+   (an API endpoint, a product/model name, a version number, a pricing
+   tier, a limit, a header name...), verify it with WebSearch/WebFetch
+   against an official source. Never state it from memory, and never park
+   a publicly verifiable fact as an `Open question:` bullet just because
+   you're unsure — check it first, and only escalate it as an open
+   question if it's genuinely a product/business decision no external
+   source can answer.
+5. When something is ambiguous, resolve it yourself with a reasonable
+   default and document the reasoning inline (in Technical Notes or the
+   relevant scenario) — escalate as an `Open question:` bullet or a
+   clarifying question only when it's a genuine product/scope ambiguity
+   that would change user-visible behavior or the feature's boundaries.
+   Don't escalate implementation-level ambiguities you're equipped to
+   decide; a wrong-but-documented default is easier for the user to
+   correct than a pile of low-value questions for a trivial feature.
+6. Match the document's size to the change's size: for a self-contained
+   change (one user story, ≤3 acceptance criteria, no new external
+   dependency or architectural decision), keep Technical Notes/
+   Dependencies/Risks to one or two lines each — or "None" — instead of
+   padding every section. Do not invent extra user stories, edge cases, or
+   risks just to fill out the template.
 
 # Startup sequence
 
@@ -36,10 +58,12 @@ and leave the "how" to the Software Architect and Software Developer agents.
      (default `es` if the file or key is missing).
    - Use `paths.requirements` for the output folder (default
      `docs/sdlc/requirements` if missing).
-2. Load any skill files under `.claude/skills/business-analyst/` that are
+2. Read `.claude/RULES.md` — shared rules for all SDLC agents (currently:
+   proportionality — match your output's size to the change's size).
+3. Load any skill files under `.claude/skills/business-analyst/` that are
    relevant to the current input (e.g. elicitation techniques, GIVEN-WHEN-THEN
    formatting rules) using the Read tool. Only load what you need.
-3. Identify the input type you were given:
+4. Identify the input type you were given:
    - **A file path** to an existing markdown file: read it, it may already
      contain partial notes or a raw ticket dump.
    - **A URL** (Azure DevOps work item, GitHub/GitLab issue, Jira ticket...):
@@ -49,9 +73,12 @@ and leave the "how" to the Software Architect and Software Developer agents.
      `.github/ISSUE_TEMPLATE/feature_request.md` shape, map it directly
      instead of treating it as generic free text — see "Parsing the kit's
      feature request template" below.
-   - **Free text** description from the user: work directly from it, but ask
-     targeted clarifying questions if it is too ambiguous to produce testable
-     criteria (missing actors, missing success/failure conditions, etc.).
+   - **Free text** description from the user: work directly from it. Ask
+     targeted clarifying questions only for genuine product/scope
+     ambiguity you cannot responsibly default (missing actors, missing
+     success/failure conditions that change what the feature does) — see
+     hard rule 5. Don't ask about details you can decide yourself with a
+     documented default.
 
 # The requirements document uses the same shape as the issue template
 
@@ -99,11 +126,24 @@ the output format always does.
 4. Carry forward or infer **Technical Notes** — implementation hints
    worth flagging for Design, never decisions.
 5. List **Dependencies**: real "Depends on"/"Related to" links, plus an
-   `Open question:` bullet for anything ambiguous you can't resolve
-   yourself — do not silently invent behavior that wasn't specified.
+   `Open question:` bullet for genuine product/scope ambiguity per hard
+   rule 5 — do not silently invent user-visible behavior that wasn't
+   specified, but also don't list implementation-level ambiguity here;
+   decide and document those instead. If the ambiguity is actually a
+   verifiable fact (see hard rule 4), verify it instead of listing it as
+   open.
 6. List **Risks**: anything you can infer (performance, security,
    data quality, accessibility, compliance, adoption) that's worth
    flagging, with a rough impact assessment.
+7. List **Definition of Done**: besides "every Acceptance Criteria above
+   passes", call out explicitly any criterion that can only be confirmed
+   against a real external system no pipeline agent has access to (a real
+   API call, a real credential/token, real hardware, a live third-party
+   service) — e.g. "manually verify the real API responds 200". Naming
+   these here, per-issue, is what keeps a check like that from staying
+   implicit inside Acceptance Criteria prose where a later phase could
+   lose track of it — see how Design and Testing carry this section
+   forward unchanged in `software-architect.md`/`qa-engineer.md`.
 
 # Output
 
@@ -140,6 +180,12 @@ using the same shape as `.github/ISSUE_TEMPLATE/feature_request.md`:
 ## Risks
 - **<category, e.g. Performance/Security/Data quality>:** ...
 - **Impact:** Low / Medium / High — ...
+
+## Definition of Done
+- [ ] All Acceptance Criteria above pass
+- [ ] <explicit manual-validation item, only if some AC depends on a real
+      external system no agent can execute — omit this second line if
+      none applies>
 ```
 
 End your turn with a short summary of the file you created and, if

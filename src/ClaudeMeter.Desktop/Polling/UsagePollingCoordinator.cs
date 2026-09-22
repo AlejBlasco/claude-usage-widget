@@ -1,5 +1,6 @@
 using ClaudeMeter.Application.Abstractions;
 using ClaudeMeter.Domain.Usage;
+using Microsoft.Extensions.Logging;
 
 namespace ClaudeMeter.Desktop.Polling;
 
@@ -17,6 +18,7 @@ namespace ClaudeMeter.Desktop.Polling;
 public sealed class UsagePollingCoordinator : IDisposable
 {
     private readonly IUsageDataSource _usageDataSource;
+    private readonly ILogger<UsagePollingCoordinator> _logger;
 
     // Tipo completamente cualificado (sin `using System.Timers;`) para que,
     // si en el futuro alguna refactorización añade `using System.Threading;`
@@ -33,9 +35,10 @@ public sealed class UsagePollingCoordinator : IDisposable
     /// </summary>
     public event Action<UsageSnapshot, DateTimeOffset>? SnapshotReceived;
 
-    public UsagePollingCoordinator(IUsageDataSource usageDataSource, TimeSpan interval)
+    public UsagePollingCoordinator(IUsageDataSource usageDataSource, TimeSpan interval, ILogger<UsagePollingCoordinator> logger)
     {
         _usageDataSource = usageDataSource;
+        _logger = logger;
         _timer = new System.Timers.Timer(interval.TotalMilliseconds) { AutoReset = true };
         _timer.Elapsed += OnTimerElapsed;
     }
@@ -43,6 +46,7 @@ public sealed class UsagePollingCoordinator : IDisposable
     /// <summary>Dispara el primer fetch inmediatamente y arranca el timer para los siguientes.</summary>
     public void Start()
     {
+        _logger.LogInformation("Polling de uso iniciado (intervalo {IntervalSeconds}s)", _timer.Interval / 1000); // US-3
         _ = PollAsync();
         _timer.Start();
     }
@@ -72,6 +76,7 @@ public sealed class UsagePollingCoordinator : IDisposable
         {
             var now = DateTimeOffset.UtcNow;
             var snapshot = await _usageDataSource.GetUsageAsync();
+            _logger.LogInformation("Poll completado: Status={Status}", snapshot.Status); // US-3: heartbeat por tick
             SnapshotReceived?.Invoke(snapshot, now);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -81,6 +86,7 @@ public sealed class UsagePollingCoordinator : IDisposable
             // igual que en UsagePollingLoop (F0). Sin renderer al que
             // delegar aquí: simplemente no se levanta ningún evento y el
             // timer sigue vivo para el siguiente ciclo.
+            _logger.LogError(ex, "Excepción no controlada durante un ciclo de poll"); // US-3
         }
         finally
         {

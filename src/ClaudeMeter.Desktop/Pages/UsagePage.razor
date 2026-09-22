@@ -1,29 +1,69 @@
 @* Componente raíz inyectado como RootComponent del BlazorWebView. Crea su
    propio UsagePollingCoordinator (US-4), mantiene el último
    (RateLimitWindow Session, RateLimitWindow Weekly) calculado con
-   RateLimitWindowParser y renderiza dos UsageBar (US-2). *@
+   RateLimitWindowParser y renderiza dos UsageBar (US-2), o un único
+   ReauthNotice cuando el último UsageSnapshotStatus es Unauthorized
+   (US-1, F2). Desde F2/Ciclo B lee el intervalo de poll de AppConfig
+   (US-1), dispara IChimePlayer al entrar en umbral Crítico (US-1) y
+   registra el listener JS del gesto de arrastre (US-2). *@
 @implements IDisposable
 @inject IUsageDataSource UsageDataSource
+@inject ILogger<UsagePollingCoordinator> Logger
+@inject AppConfig Config
+@inject IChimePlayer ChimePlayer
+@inject WindowDragService DragService
+@inject IJSRuntime JS
+@inject ILogger<UsagePage> PageLogger
 
-<div class="usage-widget">
-    <UsageBar Title="Sesión" Window="@_session" Stale="@_isStale" />
-    <UsageBar Title="Semana" Window="@_weekly" Stale="@_isStale" />
-</div>
+@if (_status == UsageSnapshotStatus.Unauthorized)
+{
+    <ReauthNotice />
+}
+else
+{
+    <div class="usage-widget">
+        <UsageBar Title="Sesión" Window="@_session" Stale="@_isStale" />
+        <UsageBar Title="Semana" Window="@_weekly" Stale="@_isStale" />
+    </div>
+}
 
 @code {
-    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
-
     private UsagePollingCoordinator? _coordinator;
+    private DotNetObjectReference<WindowDragService>? _dragServiceRef;
     private RateLimitWindow _session = RateLimitWindow.Unavailable;
     private RateLimitWindow _weekly = RateLimitWindow.Unavailable;
+    private UsageSnapshotStatus? _status; // F2/US-1: se necesita el estado completo, no solo IsSuccess
+    private UsageThreshold? _previousSessionThreshold; // F2/Ciclo B (US-1): detecta transición a Crítico
+    private UsageThreshold? _previousWeeklyThreshold;
     private bool _hasEverSucceeded;
     private bool _isStale;
 
     protected override void OnInitialized()
     {
-        _coordinator = new UsagePollingCoordinator(UsageDataSource, RefreshInterval);
+        _coordinator = new UsagePollingCoordinator(UsageDataSource, Config.PollingInterval, Logger); // F2/Ciclo B: antes RefreshInterval hardcodeado
         _coordinator.SnapshotReceived += OnSnapshotReceived;
         _coordinator.Start();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // US-2: registra el listener de arrastre una única vez.
+            _dragServiceRef = DotNetObjectReference.Create(DragService);
+            try
+            {
+                await JS.InvokeVoidAsync("claudeMeterDrag.init", _dragServiceRef);
+            }
+            catch (Exception ex)
+            {
+                // No debería pasar en circunstancias normales (drag.js ya se
+                // cargó por el propio index.html antes de que Blazor renderice
+                // nada), pero si el interop JS falla aquí, el usuario se
+                // queda sin arrastre de forma silenciosa si no se registra.
+                PageLogger.LogError(ex, "No se pudo registrar el listener de arrastre (claudeMeterDrag.init)");
+            }
+        }
     }
 
     private void OnSnapshotReceived(UsageSnapshot snapshot, DateTimeOffset now)
@@ -55,21 +95,53 @@
     /// <summary><c>internal</c> + <c>InternalsVisibleTo</c>: expone si el poll subyacente sigue activo, para el test bUnit de "el timer se detiene al desmontar".</summary>
     internal bool IsPollingActiveForTests => _coordinator?.IsRunningForTests ?? false;
 
+    /// <summary><c>internal</c> + <c>InternalsVisibleTo</c>: expone el último <see cref="UsageSnapshotStatus"/> aplicado, para los tests bUnit de F2/US-1.</summary>
+    internal UsageSnapshotStatus? StatusForTests => _status;
+
     private void Apply(UsageSnapshot snapshot, DateTimeOffset now)
     {
+        _status = snapshot.Status; // F2/US-1
+
         var (session, weekly) = RateLimitWindowParser.ParseSnapshot(snapshot, now);
 
         if (snapshot.IsSuccess)
         {
+            // F2/Ciclo B (US-1): el chime solo se evalúa sobre snapshots con
+            // éxito, para que un fallo transitorio de red no "resetee" la
+            // detección de transición y dispare un chime falso al
+            // recuperarse (ver Technology Choices del documento de diseño).
+            var sessionThreshold = UsageThresholdClassifier.Classify(session.PercentageUsed);
+            var weeklyThreshold = UsageThresholdClassifier.Classify(weekly.PercentageUsed);
+
+            if (Config.ChimeEnabled &&
+                (ThresholdTransition.EnteredCritical(_previousSessionThreshold, sessionThreshold) ||
+                 ThresholdTransition.EnteredCritical(_previousWeeklyThreshold, weeklyThreshold)))
+            {
+                ChimePlayer.Play();
+            }
+
+            _previousSessionThreshold = sessionThreshold;
+            _previousWeeklyThreshold = weeklyThreshold;
+
             _session = session;
             _weekly = weekly;
             _isStale = false;
             _hasEverSucceeded = true;
         }
+        else if (snapshot.Status == UsageSnapshotStatus.Unauthorized)
+        {
+            // AC 3 de US-1 (F2): nunca "(desactualizado)" — es una
+            // credencial inválida, no un dato viejo. El bloque @if de
+            // arriba ya sustituye las barras por ReauthNotice; no hace
+            // falta tocar _session/_weekly aquí.
+            _isStale = false;
+        }
         else if (_hasEverSucceeded)
         {
             // Hubo un dato válido antes: se conserva el último _session/_weekly
             // pero se marca como potencialmente desactualizado (AC de US-4).
+            // _previousSessionThreshold/_previousWeeklyThreshold NO se tocan
+            // aquí (ver rationale de F2/Ciclo B arriba).
             _isStale = true;
         }
         else
@@ -83,6 +155,7 @@
     /// <inheritdoc />
     public void Dispose()
     {
+        _dragServiceRef?.Dispose();
         if (_coordinator is not null)
         {
             _coordinator.SnapshotReceived -= OnSnapshotReceived;

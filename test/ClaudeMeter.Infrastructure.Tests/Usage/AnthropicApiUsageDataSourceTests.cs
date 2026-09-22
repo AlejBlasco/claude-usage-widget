@@ -3,6 +3,8 @@ using System.Text.Json;
 using ClaudeMeter.Domain.Authentication;
 using ClaudeMeter.Domain.Usage;
 using ClaudeMeter.Infrastructure.Usage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ClaudeMeter.Infrastructure.Tests.Usage;
 
@@ -12,7 +14,10 @@ namespace ClaudeMeter.Infrastructure.Tests.Usage;
 /// (nunca una llamada de red real) y un <see cref="FakeTokenProvider"/>
 /// (nunca un token real), conforme a la regla de QA de <c>CLAUDE.md</c> y
 /// al Acceptance Criteria del issue original ("Tests con HttpMessageHandler
-/// fake, sin token real").
+/// fake, sin token real"). El tercer parámetro del constructor
+/// (<see cref="ILogger{TCategoryName}"/>, F2/US-3) se satisface siempre con
+/// <see cref="NullLogger{T}.Instance"/> -- ningún test de esta clase
+/// verifica logging, solo el mapeo respuesta HTTP -&gt; <see cref="UsageSnapshot"/>.
 /// </summary>
 public sealed class AnthropicApiUsageDataSourceTests
 {
@@ -37,7 +42,8 @@ public sealed class AnthropicApiUsageDataSourceTests
         });
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(handler));
+            new HttpClient(handler),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         var result = await sut.GetUsageAsync();
@@ -76,7 +82,8 @@ public sealed class AnthropicApiUsageDataSourceTests
         };
         var handler = new StubHttpMessageHandler(_ =>
             throw new InvalidOperationException("No debería llamarse al handler HTTP sin token."));
-        var sut = new AnthropicApiUsageDataSource(new FakeTokenProvider(tokenResult), new HttpClient(handler));
+        var sut = new AnthropicApiUsageDataSource(
+            new FakeTokenProvider(tokenResult), new HttpClient(handler), NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         var result = await sut.GetUsageAsync();
@@ -97,7 +104,8 @@ public sealed class AnthropicApiUsageDataSourceTests
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(handler));
+            new HttpClient(handler),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         var result = await sut.GetUsageAsync();
@@ -116,7 +124,8 @@ public sealed class AnthropicApiUsageDataSourceTests
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden));
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(handler));
+            new HttpClient(handler),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         var result = await sut.GetUsageAsync();
@@ -133,7 +142,8 @@ public sealed class AnthropicApiUsageDataSourceTests
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(handler));
+            new HttpClient(handler),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         var result = await sut.GetUsageAsync();
@@ -146,27 +156,33 @@ public sealed class AnthropicApiUsageDataSourceTests
     }
 
     [Fact]
-    public async Task GetUsageAsync_Con200SinCabecerasUnified_DevuelveRequestFailed()
+    public async Task GetUsageAsync_Con200SinCabecerasUnified_DevuelveMalformedResponse()
     {
         // Arrange: 200 sin ninguna cabecera anthropic-ratelimit-unified-*.
+        // F2 (categoría 3 del modelo de reintento): contrato roto, no fallo
+        // de red -- ya no se clasifica como RequestFailed.
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(handler));
+            new HttpClient(handler),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         var result = await sut.GetUsageAsync();
 
         // Assert
-        Assert.Equal(UsageSnapshotStatus.RequestFailed, result.Status);
+        Assert.Equal(UsageSnapshotStatus.MalformedResponse, result.Status);
         Assert.False(result.IsSuccess);
+        Assert.Null(result.Session);
+        Assert.Null(result.Weekly);
     }
 
     [Fact]
-    public async Task GetUsageAsync_Con200ConSoloCabeceraDe5hStatus_DevuelveRequestFailed()
+    public async Task GetUsageAsync_Con200ConSoloCabeceraDe5hStatus_DevuelveMalformedResponse()
     {
         // Arrange: caso límite explícito del diseño — solo llega la ventana
-        // de 5h, falta la de 7d; no debe clasificarse como éxito.
+        // de 5h, falta la de 7d; no debe clasificarse como éxito, y (F2)
+        // tampoco como RequestFailed -- es un contrato de API roto.
         var handler = new StubHttpMessageHandler(_ =>
         {
             var response = new HttpResponseMessage(HttpStatusCode.OK);
@@ -175,13 +191,15 @@ public sealed class AnthropicApiUsageDataSourceTests
         });
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(handler));
+            new HttpClient(handler),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         var result = await sut.GetUsageAsync();
 
         // Assert
-        Assert.Equal(UsageSnapshotStatus.RequestFailed, result.Status);
+        Assert.Equal(UsageSnapshotStatus.MalformedResponse, result.Status);
+        Assert.False(result.IsSuccess);
     }
 
     [Fact]
@@ -190,7 +208,8 @@ public sealed class AnthropicApiUsageDataSourceTests
         // Arrange
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(new ThrowingHttpMessageHandler()));
+            new HttpClient(new ThrowingHttpMessageHandler()),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         var result = await sut.GetUsageAsync();
@@ -209,7 +228,8 @@ public sealed class AnthropicApiUsageDataSourceTests
         // cancelación genuina pedida por el consumidor.
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(new TimeoutHttpMessageHandler()));
+            new HttpClient(new TimeoutHttpMessageHandler()),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         var result = await sut.GetUsageAsync();
@@ -232,7 +252,8 @@ public sealed class AnthropicApiUsageDataSourceTests
         });
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(handler));
+            new HttpClient(handler),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         await sut.GetUsageAsync();
@@ -261,7 +282,8 @@ public sealed class AnthropicApiUsageDataSourceTests
         });
         var sut = new AnthropicApiUsageDataSource(
             new FakeTokenProvider(TokenResult.Success(FakeAccessToken)),
-            new HttpClient(handler));
+            new HttpClient(handler),
+            NullLogger<AnthropicApiUsageDataSource>.Instance);
 
         // Act
         await sut.GetUsageAsync();
@@ -282,5 +304,68 @@ public sealed class AnthropicApiUsageDataSourceTests
         Assert.Equal(1, messages.GetArrayLength());
         Assert.Equal("user", messages[0].GetProperty("role").GetString());
         Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("model").GetString()));
+    }
+
+    // --- US-3 (F2): nivel de log exacto por categoría de resultado. ---
+
+    [Fact]
+    public async Task GetUsageAsync_ConTokenUnavailable_RegistraWarning()
+    {
+        var logger = new CapturingLogger<AnthropicApiUsageDataSource>();
+        var sut = new AnthropicApiUsageDataSource(
+            new FakeTokenProvider(TokenResult.TokenMissing()),
+            new HttpClient(new StubHttpMessageHandler(_ => throw new InvalidOperationException("no debería llamarse"))),
+            logger);
+
+        await sut.GetUsageAsync();
+
+        Assert.Contains(LogLevel.Warning, logger.LoggedLevels);
+        Assert.DoesNotContain(LogLevel.Error, logger.LoggedLevels);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_Con401_RegistraError()
+    {
+        var logger = new CapturingLogger<AnthropicApiUsageDataSource>();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        var sut = new AnthropicApiUsageDataSource(
+            new FakeTokenProvider(TokenResult.Success(FakeAccessToken)), new HttpClient(handler), logger);
+
+        await sut.GetUsageAsync();
+
+        Assert.Contains(LogLevel.Error, logger.LoggedLevels);
+        Assert.DoesNotContain(LogLevel.Warning, logger.LoggedLevels);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_Con500_RegistraWarningNoError()
+    {
+        // Fallo transitorio (categoría 1, RequestFailed): Warning, no Error
+        // -- distinto del tratamiento de Unauthorized/MalformedResponse.
+        var logger = new CapturingLogger<AnthropicApiUsageDataSource>();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var sut = new AnthropicApiUsageDataSource(
+            new FakeTokenProvider(TokenResult.Success(FakeAccessToken)), new HttpClient(handler), logger);
+
+        await sut.GetUsageAsync();
+
+        Assert.Contains(LogLevel.Warning, logger.LoggedLevels);
+        Assert.DoesNotContain(LogLevel.Error, logger.LoggedLevels);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_Con200SinCabecerasUnified_RegistraErrorParaMalformedResponse()
+    {
+        // Contrato roto (categoría 3): Error, igual que Unauthorized -- no
+        // Warning, para que destaque en el log como fallo definitivo.
+        var logger = new CapturingLogger<AnthropicApiUsageDataSource>();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var sut = new AnthropicApiUsageDataSource(
+            new FakeTokenProvider(TokenResult.Success(FakeAccessToken)), new HttpClient(handler), logger);
+
+        await sut.GetUsageAsync();
+
+        Assert.Contains(LogLevel.Error, logger.LoggedLevels);
+        Assert.DoesNotContain(LogLevel.Warning, logger.LoggedLevels);
     }
 }
