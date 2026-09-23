@@ -2,7 +2,7 @@
 
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)
 ![Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
-![Fase](https://img.shields.io/badge/roadmap-F2%20completada-brightgreen)
+![Fase](https://img.shields.io/badge/roadmap-F3%20completada-brightgreen)
 
 Widget de escritorio (Blazor Hybrid: WPF + `BlazorWebView`) que muestra en tiempo real el consumo de cuota de Claude Code — sesión, semana, countdown hasta el reset — sin salir del escritorio.
 
@@ -96,7 +96,33 @@ Pendiente de validación manual (no automatizable por la pipeline SDLC, ver [`do
 - **Ciclo A** — manejo de 401/403 con aviso claro en vez de refresco propio de token (`ReauthNotice`), reintentos con backoff ante fallos transitorios, logging estructurado (Serilog) a `%LOCALAPPDATA%\ClaudeMeter\logs`. 162 tests, 91.7-100% de cobertura en las clases de negocio nuevas. Detalle en [`docs/sdlc/technical/f2-robustez-ciclo-a.md`](./docs/sdlc/technical/f2-robustez-ciclo-a.md).
 - **Ciclo B** — `config.json` para intervalo de polling, posición inicial y chime activable/desactivable (umbral crítico, una sola vez por transición); arrastrar el widget con el ratón y persistir la nueva posición para el siguiente arranque. 216 tests, 94-100% de cobertura en las clases de negocio nuevas. Validado a mano en Windows real, incluyendo un mecanismo de arrastre corregido tres veces en vivo durante esa validación (`Window.DragMove()` no es compatible con `BlazorWebView`/WebView2 por un problema de captura de ratón entre procesos; sustituido por Pointer Events + `setPointerCapture` reenviando deltas por JS interop, más un fix de hit-test para un bug documentado de WPF+WebView2 con `AllowsTransparency`). Detalle técnico en [`docs/sdlc/technical/f2-robustez-ciclo-b.md`](./docs/sdlc/technical/f2-robustez-ciclo-b.md), explicación sin jerga en [`docs/functional/f2-robustez-ciclo-b.md`](./docs/functional/f2-robustez-ciclo-b.md).
 
-Siguiente fase: **F3 — UX + página Mascota** (milestone 4) — tema claro/oscuro, countdown animado, click-through configurable ([#16](https://github.com/AlejBlasco/claude-usage-widget/issues/16)), icono de bandeja con pausar/recargar/salir y cierre directo desde el propio widget ([#17](https://github.com/AlejBlasco/claude-usage-widget/issues/17); hoy no hay forma de cerrar el widget salvo desde el Administrador de tareas), `ScreenNavigator`/`IWidgetScreen` y `MascotPage.razor`. Roadmap completo por fases en [`CLAUDE.md`](./CLAUDE.md).
+**F3 — UX + página Mascota** (milestone 4), en tres ciclos SDLC:
+
+- **Ciclo A** — tema claro/oscuro (paleta propia por tema, sin regresión visual sobre F1/F2), countdown animado al cambiar de minuto, auto-ajuste de altura de ventana al contenido real (`ResizeObserver` vía JS interop, en vez de una altura fija que recortaba contenido con "Tamaño de texto" de Windows alto). Detalle en [`docs/sdlc/technical/f3-ux-mascota-ciclo-a.md`](./docs/sdlc/technical/f3-ux-mascota-ciclo-a.md).
+- **Ciclo B** — click-through configurable desde la bandeja ([#16](https://github.com/AlejBlasco/claude-usage-widget/issues/16)), icono de bandeja (`NotifyIcon`) con menú Pausar/Reanudar, Recargar, Ignorar clics y Salir, y botón de cierre directo `✕` en la esquina del propio widget ([#17](https://github.com/AlejBlasco/claude-usage-widget/issues/17); antes solo se podía cerrar desde el Administrador de tareas). Detalle en [`docs/sdlc/technical/f3-ux-mascota-ciclo-b.md`](./docs/sdlc/technical/f3-ux-mascota-ciclo-b.md).
+- **Ciclo C** — `ScreenNavigator`/`IWidgetScreen` (nuevo `RootComponent`, sustituye a `UsagePage` como único componente Razor garantizado vivo durante toda la app) con un botón `⇄` para alternar pantallas, y `MascotPage.razor` ("Clawd"), un segundo view derivado únicamente del snapshot actual — ver [Iconos y textos del widget](#iconos-y-textos-del-widget) más abajo. Detalle técnico en [`docs/sdlc/technical/f3-ux-mascota-ciclo-c.md`](./docs/sdlc/technical/f3-ux-mascota-ciclo-c.md), explicación sin jerga en [`docs/functional/f3-ux-mascota-ciclo-c.md`](./docs/functional/f3-ux-mascota-ciclo-c.md).
+
+Roadmap completo por fases en [`CLAUDE.md`](./CLAUDE.md).
+
+### Iconos y textos del widget
+
+**Mascota "Clawd" (`MascotPage`)** — estado derivado del "peor caso" entre sesión y semana (umbrales de [`UsageThresholdClassifier`](./src/ClaudeMeter.Domain/Usage/UsageThreshold.cs): <70% Normal, 70-90% Warning, ≥90% Critical):
+
+| Estado (`MascotState`) | Cuándo | Icono | Texto |
+|---|---|---|---|
+| `Calm` | ambas ventanas por debajo del 70% | 😌 | "Todo tranquilo" |
+| `Alert` | alguna ventana entre 70-90% | 😬 | "Cerca del aviso" |
+| `NearLimit` | alguna ventana ≥90% | 😱 | "Cerca del límite" |
+| `NoData` | sin snapshot válido todavía, o token inválido (401/403) | 😶 | "Sin datos" |
+
+**Controles del widget** (visibles al pasar el ratón por encima, arriba de la ventana):
+
+| Control | Icono | Acción |
+|---|---|---|
+| Cambiar pantalla | `⇄` | Alterna entre `UsagePage` (barras) y `MascotPage` (mascota) sin perder el snapshot ni reiniciar el polling. Solo aparece con más de una pantalla registrada. |
+| Cerrar | `✕` | Cierra la aplicación directamente (mismo efecto que "Salir" desde la bandeja). |
+
+**Menú de la bandeja** (`NotifyIcon`): Pausar/Reanudar, Recargar, Ignorar clics (click-through), Salir.
 
 ## Requisitos previos
 
@@ -128,7 +154,9 @@ Desde F2/Ciclo B, `%LOCALAPPDATA%\ClaudeMeter\config.json` (opcional, se crea so
 }
 ```
 
-También puedes arrastrar el widget con el ratón a cualquier punto de la pantalla — la nueva posición se guarda sola en `config.json` al soltar, y el widget reaparece ahí en el siguiente arranque. No hay forma de cerrarla desde la propia ventana todavía — usa el Administrador de tareas hasta que llegue F3 (icono de bandeja + cierre directo desde el widget, [#17](https://github.com/AlejBlasco/claude-usage-widget/issues/17)).
+También puedes arrastrar el widget con el ratón a cualquier punto de la pantalla — la nueva posición se guarda sola en `config.json` al soltar, y el widget reaparece ahí en el siguiente arranque. La ventana se auto-ajusta de altura a su contenido real.
+
+Pasa el ratón por encima para revelar los controles de la esquina superior (`⇄` cambiar entre barras y mascota, `✕` cerrar) — ver [Iconos y textos del widget](#iconos-y-textos-del-widget). El icono de la bandeja del sistema añade Pausar/Reanudar, Recargar, Ignorar clics (click-through) y Salir.
 
 ## Probar la validación de F0 (consola)
 

@@ -1,0 +1,235 @@
+@* src/ClaudeMeter.Desktop/Navigation/ScreenNavigator.razor *@
+@* RootComponent real de BlazorWebView (US-1, issue #18) -- único componente
+   Razor garantizado vivo durante toda la vida de la aplicación. Absorbe
+   íntegramente el ciclo de vida que hasta F3/Ciclo B gestionaba
+   UsagePage.razor (coordinador de polling, PollingControlService, chime,
+   tema, y los tres DotNetObjectReference de drag/resize/close vía JS
+   interop) para que sea independiente de qué IWidgetScreen esté visible en
+   cada momento -- ver Architecture Overview del documento de diseño de F3
+   Ciclo C para el rationale completo. UsagePage/MascotPage pasan a ser
+   puramente presentacionales, dirigidas por el [Parameter] WidgetUsageState
+   que este componente les pasa. *@
+@implements IDisposable
+@inject IUsageDataSource UsageDataSource
+@inject ILogger<UsagePollingCoordinator> Logger
+@inject AppConfig Config
+@inject IChimePlayer ChimePlayer
+@inject WindowDragService DragService
+@inject WindowResizeService ResizeService
+@inject PollingControlService PollingControl
+@inject WindowCloseService CloseService
+@inject IJSRuntime JS
+@inject ILogger<ScreenNavigator> PageLogger
+
+<div class="claudemeter-root @Config.Theme.ToCssClass()">
+    <button type="button" class="claudemeter-close" aria-label="Cerrar ClaudeMeter">✕</button>
+
+    @* US-1 (issue #18): gesto de cambio de pantalla. El stopPropagation
+       que evita que el mismo clic dispare también
+       WindowDragService.BeginDrag() (drag.js escucha en
+       document.documentElement) NO puede resolverse con el modificador
+       @onpointerdown:stopPropagation de Blazor -- su listener delegado
+       vive en document, que en el burbujeo del evento nativo se alcanza
+       DESPUÉS que document.documentElement, así que drag.js ya habría
+       capturado el puntero antes de que Blazor pudiera detener nada
+       (regresión detectada en validación manual: el clic no llegaba al
+       botón, solo Espacio con el botón enfocado). Se resuelve igual que
+       .claudemeter-close en close.js: un listener nativo de pointerdown
+       registrado directamente sobre el botón (ver cycle.js), inicializado
+       en OnAfterRenderAsync. Solo se muestra si hay más de una pantalla
+       registrada -- con una única pantalla, el AC de caso límite exige que
+       ciclar no falle, pero no exige mostrar el control. *@
+    @if (_cycle.ScreenCount > 1)
+    {
+        <button type="button" class="claudemeter-cycle" @onclick="CycleScreen"
+                aria-label="Cambiar pantalla">⇄</button>
+    }
+
+    <DynamicComponent Type="@_cycle.Current" Parameters="@_screenParameters" />
+</div>
+
+@code {
+    /// <summary>Registro único de pantallas -- añadir una pantalla nueva (p. ej. PeakOffPeakPage en F4) solo exige extender este array, sin tocar ScreenCycle ni el resto de este fichero.</summary>
+    private static readonly Type[] DefaultScreens = { typeof(UsagePage), typeof(MascotPage) };
+
+    [Parameter]
+    public IReadOnlyList<Type> ScreenTypes { get; set; } = DefaultScreens;
+
+    private ScreenCycle _cycle = null!;
+    private WidgetUsageState _state = WidgetUsageState.Initial;
+
+    // DynamicComponent.Parameters exige IDictionary<string, object> (no
+    // IReadOnlyDictionary) -- desviación mecánica respecto al Data Model del
+    // documento de diseño, que no compilaba tal cual (ver resumen de
+    // implementación).
+    private IDictionary<string, object> _screenParameters = new Dictionary<string, object>();
+
+    private UsagePollingCoordinator? _coordinator;
+    private DotNetObjectReference<WindowDragService>? _dragServiceRef;
+    private DotNetObjectReference<WindowResizeService>? _resizeServiceRef;
+    private DotNetObjectReference<WindowCloseService>? _closeServiceRef;
+    private RateLimitWindow _session = RateLimitWindow.Unavailable;
+    private RateLimitWindow _weekly = RateLimitWindow.Unavailable;
+    private UsageSnapshotStatus? _status;
+    private UsageThreshold? _previousSessionThreshold;
+    private UsageThreshold? _previousWeeklyThreshold;
+    private bool _hasEverSucceeded;
+    private bool _isStale;
+
+    protected override void OnInitialized()
+    {
+        _cycle = new ScreenCycle(ScreenTypes);
+        UpdateScreenParameters();
+
+        _coordinator = new UsagePollingCoordinator(UsageDataSource, Config.PollingInterval, Logger);
+        _coordinator.SnapshotReceived += OnSnapshotReceived;
+        _coordinator.Start();
+
+        PollingControl.AttachCoordinator(_coordinator);
+        PollingControl.PauseStateChanged += OnPauseStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Idéntico a lo que hacía UsagePage hasta F3/Ciclo B -- se
+            // ejecuta ahora una única vez en toda la vida de la app (antes
+            // también una única vez, porque UsagePage era el único
+            // RootComponent) -- cero cambio de comportamiento observable.
+            _dragServiceRef = DotNetObjectReference.Create(DragService);
+            try { await JS.InvokeVoidAsync("claudeMeterDrag.init", _dragServiceRef); }
+            catch (Exception ex) { PageLogger.LogError(ex, "No se pudo registrar el listener de arrastre (claudeMeterDrag.init)"); }
+
+            _resizeServiceRef = DotNetObjectReference.Create(ResizeService);
+            try { await JS.InvokeVoidAsync("claudeMeterResize.init", _resizeServiceRef); }
+            catch (Exception ex) { PageLogger.LogError(ex, "No se pudo registrar el ajuste automático de altura (claudeMeterResize.init)"); }
+
+            _closeServiceRef = DotNetObjectReference.Create(CloseService);
+            try { await JS.InvokeVoidAsync("claudeMeterClose.init", _closeServiceRef); }
+            catch (Exception ex) { PageLogger.LogError(ex, "No se pudo registrar el listener de cierre directo (claudeMeterClose.init)"); }
+
+            // Corrección de la regresión detectada en validación manual del
+            // botón ⇄ -- ver comentario junto a .claudemeter-cycle arriba.
+            // No requiere DotNetObjectReference: cycle.js solo llama a
+            // stopPropagation() en el pointerdown nativo, el @onclick de
+            // Blazor sobre el botón se encarga del resto.
+            try { await JS.InvokeVoidAsync("claudeMeterCycle.init"); }
+            catch (Exception ex) { PageLogger.LogError(ex, "No se pudo registrar el listener de cambio de pantalla (claudeMeterCycle.init)"); }
+        }
+    }
+
+    /// <summary>US-1: avanza ScreenCycle y refresca el DynamicComponent -- sin recargar ni perder el snapshot ya calculado (AC de US-1: el polling no se reinicia al cambiar de pantalla).</summary>
+    private void CycleScreen()
+    {
+        _cycle.Next();
+        UpdateScreenParameters();
+    }
+
+    private void UpdateScreenParameters() =>
+        _screenParameters = new Dictionary<string, object> { ["State"] = _state };
+
+    private void OnSnapshotReceived(UsageSnapshot snapshot, DateTimeOffset now)
+    {
+        _ = InvokeAsync(() =>
+        {
+            try
+            {
+                Apply(snapshot, now);
+                UpdateScreenParameters();
+                StateHasChanged();
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            {
+                // Carrera benigna: MainWindow se cerró mientras esta
+                // respuesta HTTP estaba en vuelo -- ver rationale idéntico
+                // heredado de UsagePage (F1).
+            }
+        });
+    }
+
+    private void OnPauseStateChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (PollingControl.IsPaused)
+            {
+                _isStale = true;
+            }
+            _state = _state with { IsStale = _isStale };
+            UpdateScreenParameters();
+            StateHasChanged();
+        });
+    }
+
+    /// <summary><c>internal</c> + <c>InternalsVisibleTo</c>: permite a bUnit simular un ciclo de refresco concreto sin depender del timer real (mismo patrón heredado de <c>UsagePage.ApplyForTests</c>).</summary>
+    internal void ApplyForTests(UsageSnapshot snapshot, DateTimeOffset now)
+    {
+        Apply(snapshot, now);
+        UpdateScreenParameters();
+    }
+
+    internal bool IsPollingActiveForTests => _coordinator?.IsRunningForTests ?? false;
+
+    private void Apply(UsageSnapshot snapshot, DateTimeOffset now)
+    {
+        _status = snapshot.Status;
+        var (session, weekly) = RateLimitWindowParser.ParseSnapshot(snapshot, now);
+
+        if (snapshot.IsSuccess)
+        {
+            var sessionThreshold = UsageThresholdClassifier.Classify(session.PercentageUsed);
+            var weeklyThreshold = UsageThresholdClassifier.Classify(weekly.PercentageUsed);
+
+            if (Config.ChimeEnabled &&
+                (ThresholdTransition.EnteredCritical(_previousSessionThreshold, sessionThreshold) ||
+                 ThresholdTransition.EnteredCritical(_previousWeeklyThreshold, weeklyThreshold)))
+            {
+                ChimePlayer.Play();
+            }
+
+            _previousSessionThreshold = sessionThreshold;
+            _previousWeeklyThreshold = weeklyThreshold;
+            _session = session;
+            _weekly = weekly;
+            _isStale = false;
+            _hasEverSucceeded = true;
+        }
+        else if (snapshot.Status == UsageSnapshotStatus.Unauthorized)
+        {
+            // CORRECCIÓN de F3/Ciclo C respecto a F2: además de no marcar
+            // "(desactualizado)", ahora también se resetean _session/_weekly
+            // a Unavailable -- necesario para que MascotStateClassifier
+            // resuelva NoData (AC de US-2). Invisible para UsagePage, que ya
+            // ignoraba estos campos en este estado (ver Technology Choices).
+            _isStale = false;
+            _session = RateLimitWindow.Unavailable;
+            _weekly = RateLimitWindow.Unavailable;
+        }
+        else if (_hasEverSucceeded)
+        {
+            _isStale = true;
+        }
+        else
+        {
+            _session = session; // == RateLimitWindow.Unavailable
+            _weekly = weekly;
+        }
+
+        _state = new WidgetUsageState(_session, _weekly, _status, _isStale);
+    }
+
+    public void Dispose()
+    {
+        PollingControl.PauseStateChanged -= OnPauseStateChanged;
+        _dragServiceRef?.Dispose();
+        _resizeServiceRef?.Dispose();
+        _closeServiceRef?.Dispose();
+        if (_coordinator is not null)
+        {
+            PollingControl.DetachCoordinator(_coordinator);
+            _coordinator.SnapshotReceived -= OnSnapshotReceived;
+            _coordinator.Dispose();
+        }
+    }
+}

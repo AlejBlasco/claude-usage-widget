@@ -91,6 +91,38 @@ html, body {
     color: var(--text-color);
 }
 
+/* F3/Ciclo C (US-1): mismo tratamiento visual que .claudemeter-close,
+   posicionado inmediatamente a su izquierda (misma esquina, ambos
+   controles de la barra superior agrupados) -- right: 26px = los 18px de
+   ancho de .claudemeter-close + 4px de separación + los 4px de margen de
+   .claudemeter-close respecto al borde. */
+.claudemeter-cycle {
+    position: absolute;
+    top: 4px;
+    right: 26px;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 18px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.claudemeter-root:hover .claudemeter-cycle,
+.claudemeter-cycle:focus-visible {
+    opacity: 1;
+}
+
+.claudemeter-cycle:hover {
+    background-color: var(--track-bg);
+    color: var(--text-color);
+}
+
 .usage-widget {
     box-sizing: border-box;
     padding: 12px 16px;
@@ -207,6 +239,35 @@ html, body {
 /* #blazor-error-ui queda fuera de alcance del tema (US-1): es un banner de
    error del framework, no una de las "páginas" (UsagePage/ReauthNotice) que
    el AC pide cubrir -- se mantiene con su paleta fija actual. */
+/* F3/Ciclo C (US-2): MascotPage -- reutiliza las mismas custom properties
+   de umbral que .usage-bar--{green,amber,red,neutral} para que la mascota
+   y las barras nunca "cuenten historias distintas" sobre el mismo dato. */
+.mascot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 16px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.mascot__icon {
+    font-size: 40px;
+    line-height: 1;
+}
+
+.mascot__label {
+    font-size: 13px;
+    color: var(--text-color);
+}
+
+.mascot--calm .mascot__icon { color: var(--color-normal); }
+.mascot--alert .mascot__icon { color: var(--color-warning); }
+.mascot--near-limit .mascot__icon { color: var(--color-critical); }
+.mascot--no-data .mascot__icon { color: var(--color-neutral); }
+
 #blazor-error-ui {
     display: none;
     position: fixed;
