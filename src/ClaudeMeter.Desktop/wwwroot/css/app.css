@@ -1,35 +1,133 @@
-/* Estilos mínimos escritos a mano para el widget de F1 — deliberadamente
-   sin Bootstrap ni ningún otro CSS de terceros (ver rationale de Technology
-   Choices en el documento de diseño): el widget solo necesita dos barras y
-   unas etiquetas.
+/* Estilos escritos a mano -- deliberadamente sin Bootstrap ni ningún otro
+   CSS de terceros (decisión fijada en F1). Desde F3/Ciclo A: custom
+   properties por tema (US-1) + animación del countdown (US-2). */
 
-   Nota sobre transparencia (ver documento de diseño): WebView2/Chromium
-   pinta su rectángulo de forma opaca salvo que el host llame a una API
-   nativa adicional, fuera de alcance de F1. Por eso aquí se fija un fondo
-   opaco intencional con estética de widget/HUD oscuro; la transparencia
-   real de MainWindow.xaml solo se aprecia alrededor del BlazorWebView. */
-
+/* F3/Ciclo A: html/body/#app/.claudemeter-root/.usage-widget/.usage-reauth
+   deliberadamente NO tienen una altura fija (ni 100% del viewport): la
+   ventana WPF se ajusta a la altura real de este contenido vía
+   ResizeObserver (ver wwwroot/js/resize.js y WindowResizeService.cs), no al
+   revés. Si algún elemento de esta cadena quedara clavado a la altura de
+   ventana actual, su caja jamás podría crecer más allá del tamaño actual y
+   el ResizeObserver nunca dispararía nada -- un problema circular que
+   causaba el recorte de contenido con "Tamaño de texto" de Windows alto. */
 html, body {
     margin: 0;
     padding: 0;
-    height: 100%;
     font-family: "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+    /* Fondo/color de respaldo mostrado antes de que Blazor monte UsagePage
+       (el "Cargando..." de index.html): SIEMPRE la paleta oscura actual,
+       nunca derivado de AppConfig.Theme (que no existe todavía en ese
+       momento) -- ver Technology Choices. */
     color: #e8e8e8;
     background-color: #20232aee;
-    overflow: hidden;
 }
 
-#app {
-    height: 100%;
+/* F3/Ciclo A (US-1): valores IDÉNTICOS a los hardcodeados hasta este ciclo
+   -- preserva el aspecto visual sin ninguna regresión (AC de US-1). */
+.claudemeter-root.theme-dark {
+    --bg-color: #20232aee;
+    --text-color: #e8e8e8;
+    --text-muted: #9aa0ab;
+    --value-color: #cfd3da;
+    --unavailable-color: #7d8290;
+    --track-bg: #3a3f4b;
+    --color-normal: #3fb950;
+    --color-warning: #d29922;
+    --color-critical: #f85149;
+    --color-neutral: #5a6070;
+}
+
+/* Paleta clara nueva (US-1): colores de umbral propios y más saturados que
+   los del tema oscuro -- ver Technology Choices sobre contraste. */
+.claudemeter-root.theme-light {
+    --bg-color: #f4f5f7ee;
+    --text-color: #20232a;
+    --text-muted: #5b6270;
+    --value-color: #3a3f4b;
+    --unavailable-color: #8b92a1;
+    --track-bg: #d8dbe2;
+    --color-normal: #1e8a3c;
+    --color-warning: #a3660a;
+    --color-critical: #c4291f;
+    --color-neutral: #7a8090;
+}
+
+.claudemeter-root {
+    position: relative; /* F3/Ciclo B: ancla .claudemeter-close (US-2) */
+    box-sizing: border-box;
+    color: var(--text-color);
+    background-color: var(--bg-color);
+}
+
+/* F3/Ciclo B (US-2): botón de cierre discreto, visible solo en hover/foco --
+   evita ocupar espacio visual permanente en un widget ya ajustado (mismo
+   criterio ya aplicado en F2/Ciclo B para no reservar una franja de
+   arrastre fija). */
+.claudemeter-close {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 18px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.claudemeter-root:hover .claudemeter-close,
+.claudemeter-close:focus-visible {
+    opacity: 1;
+}
+
+.claudemeter-close:hover {
+    background-color: var(--track-bg);
+    color: var(--text-color);
+}
+
+/* F3/Ciclo C (US-1): mismo tratamiento visual que .claudemeter-close,
+   posicionado inmediatamente a su izquierda (misma esquina, ambos
+   controles de la barra superior agrupados) -- right: 26px = los 18px de
+   ancho de .claudemeter-close + 4px de separación + los 4px de margen de
+   .claudemeter-close respecto al borde. */
+.claudemeter-cycle {
+    position: absolute;
+    top: 4px;
+    right: 26px;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 18px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.claudemeter-root:hover .claudemeter-cycle,
+.claudemeter-cycle:focus-visible {
+    opacity: 1;
+}
+
+.claudemeter-cycle:hover {
+    background-color: var(--track-bg);
+    color: var(--text-color);
 }
 
 .usage-widget {
     box-sizing: border-box;
-    height: 100%;
     padding: 12px 16px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     gap: 14px;
 }
 
@@ -44,13 +142,13 @@ html, body {
     font-weight: 600;
     letter-spacing: 0.02em;
     text-transform: uppercase;
-    color: #9aa0ab;
+    color: var(--text-muted);
 }
 
 .usage-bar__track {
     height: 10px;
     border-radius: 5px;
-    background-color: #3a3f4b;
+    background-color: var(--track-bg);
     overflow: hidden;
 }
 
@@ -62,38 +160,61 @@ html, body {
 
 .usage-bar__value {
     font-size: 12px;
-    color: #cfd3da;
+    color: var(--value-color);
 }
 
 .usage-bar__value--unavailable {
-    color: #7d8290;
+    color: var(--unavailable-color);
     font-style: italic;
+}
+
+/* F3/Ciclo A (US-2): countdown de MinutesRemaining. El <span> se recrea
+   (no se parchea) cada vez que su @key cambia entre renders -- ver
+   Technology Choices -- lo que dispara esta animación en cada ciclo con un
+   valor distinto, incluida la transición final a "0m" (AC de US-2).
+   opacity/transform: el navegador las compone sin relayout (AC explícito
+   de no impactar CPU/GPU). */
+.usage-bar__countdown {
+    display: inline-block;
+    font-size: 12px;
+    color: var(--text-muted);
+    animation: usage-countdown-fade 0.3s ease-in-out;
+}
+
+@keyframes usage-countdown-fade {
+    from {
+        opacity: 0;
+        transform: translateY(-3px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Umbral verde/ámbar/rojo (US-3) — el color se decide exclusivamente vía
    clase CSS, la severidad (Normal/Warning/Critical) la calcula
    UsageThresholdClassifier en Domain, sin ninguna noción de color allí. */
 .usage-bar--green .usage-bar__fill {
-    background-color: #3fb950;
+    background-color: var(--color-normal);
 }
 
 .usage-bar--amber .usage-bar__fill {
-    background-color: #d29922;
+    background-color: var(--color-warning);
 }
 
 .usage-bar--red .usage-bar__fill {
-    background-color: #f85149;
+    background-color: var(--color-critical);
 }
 
 .usage-bar--neutral .usage-bar__fill {
-    background-color: #5a6070;
+    background-color: var(--color-neutral);
 }
 
 /* F2/US-1: aviso de reautenticación — reutiliza el rojo ya usado para el
    umbral crítico (.usage-bar--red), consistente con "credencial inválida"
    como el estado más severo del widget. */
 .usage-reauth {
-    height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -106,14 +227,46 @@ html, body {
 
 .usage-reauth__icon {
     font-size: 22px;
-    color: #f85149;
+    color: var(--color-critical);
 }
 
 .usage-reauth__message {
     font-size: 13px;
-    color: #e8e8e8;
+    color: var(--text-color);
     line-height: 1.4;
 }
+
+/* #blazor-error-ui queda fuera de alcance del tema (US-1): es un banner de
+   error del framework, no una de las "páginas" (UsagePage/ReauthNotice) que
+   el AC pide cubrir -- se mantiene con su paleta fija actual. */
+/* F3/Ciclo C (US-2): MascotPage -- reutiliza las mismas custom properties
+   de umbral que .usage-bar--{green,amber,red,neutral} para que la mascota
+   y las barras nunca "cuenten historias distintas" sobre el mismo dato. */
+.mascot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 16px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.mascot__icon {
+    font-size: 40px;
+    line-height: 1;
+}
+
+.mascot__label {
+    font-size: 13px;
+    color: var(--text-color);
+}
+
+.mascot--calm .mascot__icon { color: var(--color-normal); }
+.mascot--alert .mascot__icon { color: var(--color-warning); }
+.mascot--near-limit .mascot__icon { color: var(--color-critical); }
+.mascot--no-data .mascot__icon { color: var(--color-neutral); }
 
 #blazor-error-ui {
     display: none;

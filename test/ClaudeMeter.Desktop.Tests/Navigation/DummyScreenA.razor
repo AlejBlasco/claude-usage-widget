@@ -1,0 +1,18 @@
+@* Pantalla simulada mínima para ScreenNavigatorTests (US-1, bUnit): implementa
+   IWidgetScreen sin ninguna dependencia real de UsagePage/MascotPage, para
+   poder probar el ciclado de ScreenNavigator de forma aislada. Renderiza su
+   propio ScreenId y el PercentageUsed de Session recibido vía [Parameter]
+   State, para poder verificar tanto "qué pantalla está activa" como "el
+   estado se conserva al cambiar de pantalla sin esperar a un nuevo poll". *@
+@namespace ClaudeMeter.Desktop.Tests.Navigation
+@using ClaudeMeter.Desktop.Navigation
+@implements IWidgetScreen
+
+<span data-testid="dummy-screen">@ScreenId:@State.Session.PercentageUsed</span>
+
+@code {
+    [Parameter]
+    public WidgetUsageState State { get; set; } = WidgetUsageState.Initial;
+
+    public string ScreenId => "dummy-a";
+}

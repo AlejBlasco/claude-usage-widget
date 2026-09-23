@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ClaudeMeter.Desktop"
-        xmlns:pages="clr-namespace:ClaudeMeter.Desktop.Pages"
+        xmlns:navigation="clr-namespace:ClaudeMeter.Desktop.Navigation"
         xmlns:blazor="clr-namespace:Microsoft.AspNetCore.Components.WebView.Wpf;assembly=Microsoft.AspNetCore.Components.WebView.Wpf"
         mc:Ignorable="d"
         Title="ClaudeMeter"
@@ -34,7 +34,7 @@
         <blazor:BlazorWebView x:Name="BlazorWebViewHost"
                               HostPage="wwwroot\index.html">
             <blazor:BlazorWebView.RootComponents>
-                <blazor:RootComponent Selector="#app" ComponentType="{x:Type pages:UsagePage}" />
+                <blazor:RootComponent Selector="#app" ComponentType="{x:Type navigation:ScreenNavigator}" />
             </blazor:BlazorWebView.RootComponents>
         </blazor:BlazorWebView>
     </Grid>

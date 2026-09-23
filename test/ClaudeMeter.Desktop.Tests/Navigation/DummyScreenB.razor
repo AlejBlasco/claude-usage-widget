@@ -1,0 +1,15 @@
+@* Segunda pantalla simulada -- ver DummyScreenA.razor para el rationale
+   completo. Misma forma, ScreenId distinto, para poder distinguir cuál de
+   las dos está activa en cada momento del ciclado. *@
+@namespace ClaudeMeter.Desktop.Tests.Navigation
+@using ClaudeMeter.Desktop.Navigation
+@implements IWidgetScreen
+
+<span data-testid="dummy-screen">@ScreenId:@State.Session.PercentageUsed</span>
+
+@code {
+    [Parameter]
+    public WidgetUsageState State { get; set; } = WidgetUsageState.Initial;
+
+    public string ScreenId => "dummy-b";
+}

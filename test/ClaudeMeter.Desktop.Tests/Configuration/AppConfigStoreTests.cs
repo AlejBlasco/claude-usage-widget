@@ -1,13 +1,16 @@
 using System.IO;
 using ClaudeMeter.Desktop.Configuration;
+using ClaudeMeter.Desktop.Tests.TestDoubles;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ClaudeMeter.Desktop.Tests.Configuration;
 
 /// <summary>
-/// Pruebas de <see cref="AppConfigStore"/> (US-1/US-2, F2 Ciclo B): confirma
-/// que <see cref="AppConfigStore.Load"/> nunca lanza (fichero inexistente,
-/// JSON corrupto, campos concretos fuera de rango) y que
+/// Pruebas de <see cref="AppConfigStore"/> (US-1/US-2, F2 Ciclo B; y desde
+/// F3/Ciclo A también <c>ResolveTheme</c>, US-1 de tema claro/oscuro):
+/// confirma que <see cref="AppConfigStore.Load"/> nunca lanza (fichero
+/// inexistente, JSON corrupto, campos concretos fuera de rango) y que
 /// <see cref="AppConfigStore.Save"/>/<see cref="AppConfigStore.SavePosition"/>
 /// escriben de forma atómica y tampoco lanzan ante un fallo de E/S. Cada
 /// test usa una ruta de fichero bajo un directorio temporal propio
@@ -142,7 +145,7 @@ public sealed class AppConfigStoreTests : IDisposable
     [Fact]
     public void Save_EscribeUnFicheroQueLoadPuedeLeerDeVuelta()
     {
-        var config = new AppConfig(TimeSpan.FromSeconds(15), new WindowPosition(10, 20), ChimeEnabled: true);
+        var config = new AppConfig(TimeSpan.FromSeconds(15), new WindowPosition(10, 20), ChimeEnabled: true, Theme: AppTheme.Light);
 
         _store.Save(config, _configPath);
         var reloaded = _store.Load(_configPath);
@@ -222,7 +225,7 @@ public sealed class AppConfigStoreTests : IDisposable
     [Fact]
     public void SavePosition_ActualizaSoloLaPosicionYConservaIntervaloYChimeYaPersistidos()
     {
-        _store.Save(new AppConfig(TimeSpan.FromSeconds(25), Position: null, ChimeEnabled: true), _configPath);
+        _store.Save(new AppConfig(TimeSpan.FromSeconds(25), Position: null, ChimeEnabled: true, Theme: AppTheme.Dark), _configPath);
 
         _store.SavePosition(left: 300, top: 400, _configPath);
 
@@ -241,6 +244,116 @@ public sealed class AppConfigStoreTests : IDisposable
         Assert.Equal(AppConfig.Default.PollingInterval, config.PollingInterval);
         Assert.Equal(AppConfig.Default.ChimeEnabled, config.ChimeEnabled);
         Assert.Equal(new WindowPosition(5, 6), config.Position);
+    }
+
+    [Fact]
+    public void Load_ConThemeAusente_UsaDarkPorDefectoSinLoguearWarning()
+    {
+        // AC de US-1 (F3/Ciclo A): campo "theme" ausente -> Dark en
+        // silencio, mismo criterio que el resto de campos de config.json
+        // cuando faltan (a diferencia de un valor presente pero inválido,
+        // que sí loguea Warning -- ver los tests de abajo).
+        Directory.CreateDirectory(_tempDirectory);
+        File.WriteAllText(_configPath, """{"chimeEnabled": true}""");
+        var capturingLogger = new CapturingLogger<AppConfigStore>();
+        var store = new AppConfigStore(capturingLogger);
+
+        var config = store.Load(_configPath);
+
+        Assert.Equal(AppTheme.Dark, config.Theme);
+        Assert.DoesNotContain(LogLevel.Warning, capturingLogger.LoggedLevels);
+    }
+
+    [Theory]
+    [InlineData("dark", AppTheme.Dark)]
+    [InlineData("Dark", AppTheme.Dark)]
+    [InlineData("DARK", AppTheme.Dark)]
+    [InlineData("light", AppTheme.Light)]
+    [InlineData("Light", AppTheme.Light)]
+    [InlineData("LIGHT", AppTheme.Light)]
+    public void Load_ConThemeValidoCaseInsensitive_LoRespeta(string themeValue, AppTheme expected)
+    {
+        Directory.CreateDirectory(_tempDirectory);
+        File.WriteAllText(_configPath, $$"""{"theme": "{{themeValue}}"}""");
+        var capturingLogger = new CapturingLogger<AppConfigStore>();
+        var store = new AppConfigStore(capturingLogger);
+
+        var config = store.Load(_configPath);
+
+        Assert.Equal(expected, config.Theme);
+        Assert.DoesNotContain(LogLevel.Warning, capturingLogger.LoggedLevels); // valor válido -> sin log
+    }
+
+    [Theory]
+    [InlineData("blue")]
+    [InlineData("")]
+    [InlineData("oscuro")] // parecido en español, pero no es el valor reconocido
+    public void Load_ConThemeDeCadenaNoReconocida_CaeADarkYRegistraWarningSinLanzar(string invalidTheme)
+    {
+        // AC de US-1: valor de tema no reconocido -> Dark + Warning, sin
+        // excepción, mismo patrón que ResolveInterval/ResolvePosition.
+        Directory.CreateDirectory(_tempDirectory);
+        File.WriteAllText(_configPath, $$"""{"theme": "{{invalidTheme}}"}""");
+        var capturingLogger = new CapturingLogger<AppConfigStore>();
+        var store = new AppConfigStore(capturingLogger);
+
+        var exception = Record.Exception(() => store.Load(_configPath));
+        var config = store.Load(_configPath);
+
+        Assert.Null(exception);
+        Assert.Equal(AppTheme.Dark, config.Theme);
+        Assert.Contains(LogLevel.Warning, capturingLogger.LoggedLevels);
+    }
+
+    [Fact]
+    public void Load_ConThemeDeTipoJsonIncorrecto_CaeADefaultCompletoConWarningSinLanzar()
+    {
+        // AC de US-1: "theme" con un tipo JSON incorrecto (un número en vez
+        // de una cadena). System.Text.Json lanza JsonException al intentar
+        // deserializar ese valor en el campo string? del DTO -- esto cae en
+        // el bloque catch (JsonException) ya existente de Load() (igual que
+        // JSON sintácticamente inválido), no en la rama de ResolveTheme,
+        // por lo que el resultado es el AppConfig.Default COMPLETO (no solo
+        // Theme), con Warning y sin lanzar -- comportamiento ya señalado
+        // como tal por el resumen de implementación de esta fase.
+        Directory.CreateDirectory(_tempDirectory);
+        File.WriteAllText(_configPath, """{"theme": 5, "chimeEnabled": true}""");
+        var capturingLogger = new CapturingLogger<AppConfigStore>();
+        var store = new AppConfigStore(capturingLogger);
+
+        var exception = Record.Exception(() => store.Load(_configPath));
+        var config = store.Load(_configPath);
+
+        Assert.Null(exception);
+        Assert.Equal(AppConfig.Default, config);
+        Assert.Contains(LogLevel.Warning, capturingLogger.LoggedLevels);
+    }
+
+    [Fact]
+    public void Save_ConTemaClaro_EscribeUnFicheroQueLoadPuedeLeerDeVueltaConElMismoTema()
+    {
+        // Round-trip Save -> Load específico de US-1: el tema persistido se
+        // conserva tal cual, no solo el resto de campos ya cubiertos por
+        // Save_EscribeUnFicheroQueLoadPuedeLeerDeVuelta.
+        var config = AppConfig.Default with { Theme = AppTheme.Light };
+
+        _store.Save(config, _configPath);
+        var reloaded = _store.Load(_configPath);
+
+        Assert.Equal(AppTheme.Light, reloaded.Theme);
+        Assert.Equal(config, reloaded);
+    }
+
+    [Fact]
+    public void Save_ConTemaOscuro_EscribeUnFicheroQueLoadPuedeLeerDeVueltaConElMismoTema()
+    {
+        var config = AppConfig.Default with { Theme = AppTheme.Dark };
+
+        _store.Save(config, _configPath);
+        var reloaded = _store.Load(_configPath);
+
+        Assert.Equal(AppTheme.Dark, reloaded.Theme);
+        Assert.Equal(config, reloaded);
     }
 
     public void Dispose()

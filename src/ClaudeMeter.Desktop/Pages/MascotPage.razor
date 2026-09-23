@@ -1,0 +1,47 @@
+@* src/ClaudeMeter.Desktop/Pages/MascotPage.razor *@
+@* Página Mascota ("Clawd", issue #19). Puramente presentacional: deriva
+   MascotState del WidgetUsageState recibido (que a su vez procede
+   directamente del último UsageSnapshot -- nunca de historial, restricción
+   explícita de CLAUDE.md) en cada render, sin estado propio entre ciclos. *@
+@implements ClaudeMeter.Desktop.Navigation.IWidgetScreen
+@using ClaudeMeter.Desktop.Navigation
+
+<div class="mascot mascot--@CssModifier">
+    <span class="mascot__icon" aria-hidden="true">@Icon</span>
+    <span class="mascot__label">@Label</span>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public WidgetUsageState State { get; set; } = WidgetUsageState.Initial;
+
+    public string ScreenId => "mascot";
+
+    // Recalculado en cada render a partir de State -- nunca se conserva
+    // entre ciclos (AC de US-2: siempre función del snapshot actual).
+    private MascotState CurrentState => MascotStateClassifier.Classify(State.Session, State.Weekly);
+
+    private string CssModifier => CurrentState switch
+    {
+        MascotState.Calm => "calm",
+        MascotState.Alert => "alert",
+        MascotState.NearLimit => "near-limit",
+        _ => "no-data",
+    };
+
+    private string Icon => CurrentState switch
+    {
+        MascotState.Calm => "😌",
+        MascotState.Alert => "😬",
+        MascotState.NearLimit => "😱",
+        _ => "😶",
+    };
+
+    private string Label => CurrentState switch
+    {
+        MascotState.Calm => "Todo tranquilo",
+        MascotState.Alert => "Cerca del aviso",
+        MascotState.NearLimit => "Cerca del límite",
+        _ => "Sin datos",
+    };
+}

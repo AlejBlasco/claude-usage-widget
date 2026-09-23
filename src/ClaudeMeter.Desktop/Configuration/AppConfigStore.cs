@@ -63,7 +63,8 @@ public sealed class AppConfigStore
         return new AppConfig(
             PollingInterval: ResolveInterval(dto.PollingIntervalSeconds),
             Position: ResolvePosition(dto.WindowPosition),
-            ChimeEnabled: dto.ChimeEnabled ?? AppConfig.Default.ChimeEnabled);
+            ChimeEnabled: dto.ChimeEnabled ?? AppConfig.Default.ChimeEnabled,
+            Theme: ResolveTheme(dto.Theme)); // F3/Ciclo A
     }
 
     /// <summary>
@@ -83,6 +84,7 @@ public sealed class AppConfigStore
             {
                 PollingIntervalSeconds = config.PollingInterval.TotalSeconds,
                 ChimeEnabled = config.ChimeEnabled,
+                Theme = config.Theme.ToString().ToLowerInvariant(), // F3/Ciclo A: "dark"/"light"
                 WindowPosition = config.Position is { } p ? new WindowPositionDto { Left = p.Left, Top = p.Top } : null,
             };
 
@@ -116,6 +118,35 @@ public sealed class AppConfigStore
         return TimeSpan.FromSeconds(value);
     }
 
+    /// <summary>
+    /// Resuelve el campo "theme" (F3/Ciclo A, US-1): ausente -> valor por
+    /// defecto en silencio (mismo criterio que el resto de campos); presente
+    /// pero no reconocido (tipo incorrecto ya descartado por
+    /// <see cref="JsonSerializer"/>, que dejaría <c>Theme</c> a <c>null</c> si
+    /// no es una cadena JSON) o con un valor distinto de "dark"/"light" ->
+    /// valor por defecto + <c>Warning</c> (AC de US-1).
+    /// </summary>
+    private AppTheme ResolveTheme(string? theme)
+    {
+        if (theme is null)
+        {
+            return AppConfig.Default.Theme;
+        }
+
+        if (string.Equals(theme, "dark", StringComparison.OrdinalIgnoreCase))
+        {
+            return AppTheme.Dark;
+        }
+
+        if (string.Equals(theme, "light", StringComparison.OrdinalIgnoreCase))
+        {
+            return AppTheme.Light;
+        }
+
+        _logger.LogWarning("theme inválido en config.json ({Value}); se usa el valor por defecto (dark)", theme);
+        return AppConfig.Default.Theme;
+    }
+
     private WindowPosition? ResolvePosition(WindowPositionDto? dto)
     {
         if (dto is null)
@@ -141,6 +172,9 @@ public sealed class AppConfigStore
 
         [JsonPropertyName("chimeEnabled")]
         public bool? ChimeEnabled { get; set; }
+
+        [JsonPropertyName("theme")]
+        public string? Theme { get; set; }
 
         [JsonPropertyName("windowPosition")]
         public WindowPositionDto? WindowPosition { get; set; }

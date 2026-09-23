@@ -52,12 +52,37 @@ public sealed class UsagePollingCoordinator : IDisposable
     }
 
     /// <summary>
+    /// Detiene el timer sin liberar recursos (AC de "Pausar"): a diferencia
+    /// de <see cref="Dispose"/>, la instancia sigue viva y <see cref="Start"/>
+    /// puede volver a invocarse después para reanudar (AC de "Reanudar":
+    /// mismo comportamiento que el Start() inicial, sin un método Resume()
+    /// aparte, F3/Ciclo B).
+    /// </summary>
+    public void Pause()
+    {
+        _logger.LogInformation("Polling de uso pausado"); // F3/Ciclo B (US-2)
+        _timer.Stop();
+    }
+
+    /// <summary>
+    /// Dispara un ciclo de poll adicional fuera de la cadencia del timer,
+    /// sin reiniciarlo ni afectar a su próximo disparo (AC de "Recargar",
+    /// F3/Ciclo B). Reutiliza el guard <c>_isPolling</c> ya existente: si ya
+    /// hay un poll en vuelo (manual o del propio timer), esta llamada es un
+    /// no-op silencioso -- el mismo comportamiento que ya tenía un tick del
+    /// timer que coincidiera con una llamada en curso.
+    /// </summary>
+    public Task PollNow() => PollAsync();
+
+    /// <summary>
     /// <c>internal</c> + <c>InternalsVisibleTo</c> hacia
     /// <c>ClaudeMeter.Desktop.Tests</c>: permite a bUnit simular un ciclo de
     /// refresco concreto sin esperar el timer real (mismo patrón que
-    /// <c>UsagePollingLoop.ExecuteIterationAsync</c> en F0).
+    /// <c>UsagePollingLoop.ExecuteIterationAsync</c> en F0). Desde F3/Ciclo B
+    /// delega en <see cref="PollNow"/> (mismo método que usa producción), en
+    /// vez de duplicar la llamada a <c>PollAsync()</c>.
     /// </summary>
-    internal Task PollOnceForTestsAsync() => PollAsync();
+    internal Task PollOnceForTestsAsync() => PollNow();
 
     /// <summary><c>internal</c> + <c>InternalsVisibleTo</c>: expone si el timer subyacente sigue activo, para el test bUnit de "el timer se detiene al desmontar".</summary>
     internal bool IsRunningForTests => _timer.Enabled;

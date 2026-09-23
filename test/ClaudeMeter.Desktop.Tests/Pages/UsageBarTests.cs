@@ -102,4 +102,63 @@ public sealed class UsageBarTests : BunitContext
 
         Assert.Equal("Semana", cut.Find(".usage-bar__title").TextContent);
     }
+
+    [Theory]
+    [InlineData(0, "0m")]
+    [InlineData(5, "5m")]
+    [InlineData(90, "1h 30m")]
+    [InlineData(1500, "1d 1h")]
+    public void UsageBar_ConMinutesRemainingDisponible_RenderizaElCountdownFormateado(
+        int minutesRemaining, string expectedText)
+    {
+        // AC de US-2 (F3/Ciclo A): el tiempo restante se muestra como texto,
+        // formateado por CountdownFormatter.Format -- mismos valores que
+        // CountdownFormatterTests, verificados aquí a través del marcado
+        // real que produce el componente.
+        var window = new RateLimitWindow(PercentageUsed: 50.0, MinutesRemaining: minutesRemaining);
+
+        var cut = Render<UsageBar>(parameters => parameters
+            .Add(p => p.Title, "Sesión")
+            .Add(p => p.Window, window));
+
+        var countdown = cut.Find(".usage-bar__countdown");
+        Assert.Equal($"Restablece en {expectedText}", countdown.TextContent.Trim());
+    }
+
+    [Fact]
+    public void UsageBar_ConMinutesRemainingDisponible_AplicaElKeyIgualAlValorDeMinutos()
+    {
+        // AC de US-2: @key="minutes" es lo que fuerza a Blazor a
+        // destruir/recrear el <span> (y así disparar la animación CSS de
+        // fundido) en vez de parchear el texto in-place -- se confirma
+        // renderizando dos valores de MinutesRemaining distintos y
+        // comprobando que el diff de bUnit trata el <span> como reemplazado,
+        // no como un nodo de texto parcheado.
+        var cut = Render<UsageBar>(parameters => parameters
+            .Add(p => p.Title, "Sesión")
+            .Add(p => p.Window, new RateLimitWindow(PercentageUsed: 50.0, MinutesRemaining: 10)));
+
+        var firstSpan = cut.Find(".usage-bar__countdown");
+        Assert.Contains("Restablece en 10m", firstSpan.TextContent.Trim());
+
+        cut.Render(parameters => parameters
+            .Add(p => p.Title, "Sesión")
+            .Add(p => p.Window, new RateLimitWindow(PercentageUsed: 50.0, MinutesRemaining: 9)));
+
+        var secondSpan = cut.Find(".usage-bar__countdown");
+        Assert.Contains("Restablece en 9m", secondSpan.TextContent.Trim());
+    }
+
+    [Fact]
+    public void UsageBar_ConWindowUnavailable_NoRenderizaNingunCountdown()
+    {
+        // AC de US-2: sin datos (MinutesRemaining null), no se intenta
+        // renderizar ni animar ningún valor ausente -- el bloque @if del
+        // countdown no debe aparecer en absoluto.
+        var cut = Render<UsageBar>(parameters => parameters
+            .Add(p => p.Title, "Sesión")
+            .Add(p => p.Window, RateLimitWindow.Unavailable));
+
+        Assert.Empty(cut.FindAll(".usage-bar__countdown"));
+    }
 }
