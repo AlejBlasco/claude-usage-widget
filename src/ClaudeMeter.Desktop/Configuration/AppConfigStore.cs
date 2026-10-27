@@ -64,7 +64,8 @@ public sealed class AppConfigStore
             PollingInterval: ResolveInterval(dto.PollingIntervalSeconds),
             Position: ResolvePosition(dto.WindowPosition),
             ChimeEnabled: dto.ChimeEnabled ?? AppConfig.Default.ChimeEnabled,
-            Theme: ResolveTheme(dto.Theme)); // F3/Ciclo A
+            Theme: ResolveTheme(dto.Theme), // F3/Ciclo A
+            AutoStartEnabled: dto.AutoStartEnabled ?? AppConfig.Default.AutoStartEnabled); // F6/US-3
     }
 
     /// <summary>
@@ -85,6 +86,7 @@ public sealed class AppConfigStore
                 PollingIntervalSeconds = config.PollingInterval.TotalSeconds,
                 ChimeEnabled = config.ChimeEnabled,
                 Theme = config.Theme.ToString().ToLowerInvariant(), // F3/Ciclo A: "dark"/"light"
+                AutoStartEnabled = config.AutoStartEnabled, // F6/US-3
                 WindowPosition = config.Position is { } p ? new WindowPositionDto { Left = p.Left, Top = p.Top } : null,
             };
 
@@ -175,6 +177,9 @@ public sealed class AppConfigStore
 
         [JsonPropertyName("theme")]
         public string? Theme { get; set; }
+
+        [JsonPropertyName("autoStartEnabled")]
+        public bool? AutoStartEnabled { get; set; }
 
         [JsonPropertyName("windowPosition")]
         public WindowPositionDto? WindowPosition { get; set; }

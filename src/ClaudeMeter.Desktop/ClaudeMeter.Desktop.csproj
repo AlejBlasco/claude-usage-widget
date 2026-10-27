@@ -14,11 +14,30 @@
          namespace de los .razor nuevos bajo Pages/ (workaround documentado
          por Microsoft para alojar Blazor en un proyecto WPF). -->
     <RootNamespace>ClaudeMeter.Desktop</RootNamespace>
+    <!-- US-2 (F6, issue #25): Program.cs pasa a ser el punto de entrada
+         real (Main() explícito, requerido para invocar
+         VelopackApp.Build().Run() como primera línea, antes de construir
+         App; ver Program.cs y el ItemGroup de App.xaml más abajo). -->
+    <StartupObject>ClaudeMeter.Desktop.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ClaudeMeter.Application\ClaudeMeter.Application.csproj" />
     <ProjectReference Include="..\ClaudeMeter.Infrastructure\ClaudeMeter.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- US-2 (F6, issue #25): App.xaml deja de ser ApplicationDefinition
+         (que generaría su propio Main() y ocultaría la posibilidad de
+         ejecutar código, como VelopackApp.Build().Run(), antes de
+         construir App) y pasa a compilarse como una Page normal, técnica
+         oficial de Velopack para WPF (ver documento de diseño, Technology
+         Choices). -->
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
   </ItemGroup>
 
   <ItemGroup>
@@ -57,6 +76,18 @@
     <!-- Microsoft.Extensions.Logging: última estable 8.0.x verificada en
          https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging/index.json. -->
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+
+    <!-- US-1 (F6): versionado automático. Ver el comentario completo en
+         ClaudeMeter.Domain.csproj (misma desviación del documento de
+         diseño: PackageReference repetido por proyecto en vez de
+         centralizado en Directory.Build.props). -->
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.94" PrivateAssets="all" />
+
+    <!-- US-2/US-3 (F6, issues #25/#26): empaquetado del instalador
+         (VelopackApp.Build().Run() en Program.cs) y auto-actualización
+         (AppUpdateService/UpdateManager+GithubSource). Última estable
+         verificada en api.nuget.org al implementar: 1.2.158. -->
+    <PackageReference Include="Velopack" Version="1.2.158" />
   </ItemGroup>
 
   <ItemGroup>

@@ -356,6 +356,55 @@ public sealed class AppConfigStoreTests : IDisposable
         Assert.Equal(config, reloaded);
     }
 
+    [Fact]
+    public void Load_ConAutoStartEnabledAusente_UsaFalsePorDefecto()
+    {
+        // F6/US-3 (issue #26): mismo criterio opt-in ya aplicado a
+        // ChimeEnabled -- campo ausente en config.json -> false en
+        // silencio, sin afectar al resto del fichero.
+        Directory.CreateDirectory(_tempDirectory);
+        File.WriteAllText(_configPath, """{"pollingIntervalSeconds": 30}""");
+
+        var config = _store.Load(_configPath);
+
+        Assert.False(config.AutoStartEnabled);
+    }
+
+    [Fact]
+    public void Load_ConAutoStartEnabledPresente_LoRespeta()
+    {
+        Directory.CreateDirectory(_tempDirectory);
+        File.WriteAllText(_configPath, """{"autoStartEnabled": true}""");
+
+        var config = _store.Load(_configPath);
+
+        Assert.True(config.AutoStartEnabled);
+    }
+
+    [Fact]
+    public void Save_ConAutoStartEnabledActivado_EscribeUnFicheroQueLoadPuedeLeerDeVueltaConElMismoValor()
+    {
+        var config = AppConfig.Default with { AutoStartEnabled = true };
+
+        _store.Save(config, _configPath);
+        var reloaded = _store.Load(_configPath);
+
+        Assert.True(reloaded.AutoStartEnabled);
+        Assert.Equal(config, reloaded);
+    }
+
+    [Fact]
+    public void Save_ConAutoStartEnabledDesactivado_EscribeUnFicheroQueLoadPuedeLeerDeVueltaConElMismoValor()
+    {
+        var config = AppConfig.Default with { AutoStartEnabled = false };
+
+        _store.Save(config, _configPath);
+        var reloaded = _store.Load(_configPath);
+
+        Assert.False(reloaded.AutoStartEnabled);
+        Assert.Equal(config, reloaded);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDirectory))

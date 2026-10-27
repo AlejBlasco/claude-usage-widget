@@ -1,4 +1,7 @@
+using System.IO;
+using ClaudeMeter.Desktop.Configuration;
 using ClaudeMeter.Desktop.Polling;
+using ClaudeMeter.Desktop.Startup;
 using ClaudeMeter.Desktop.Tests.TestDoubles;
 using ClaudeMeter.Desktop.Tray;
 using ClaudeMeter.Desktop.Windowing;
@@ -30,34 +33,37 @@ public sealed class TrayIconServiceTests
     private static readonly RawRateLimitHeaders SampleHeaders = new("allowed", "0.1", "0.9", "1789560000");
     private static readonly TimeSpan LongInterval = TimeSpan.FromHours(1);
 
-    private static (TrayIconService Tray, PollingControlService PollingControl, ClickThroughService ClickThrough, UsagePollingCoordinator Coordinator, FakeUsageDataSource Fake)
-        CreateService()
+    private static (TrayIconService Tray, PollingControlService PollingControl, ClickThroughService ClickThrough, AutoStartService AutoStart, UsagePollingCoordinator Coordinator, FakeUsageDataSource Fake)
+        CreateService(bool autoStartEnabled = false)
     {
         var fake = new FakeUsageDataSource(UsageSnapshot.Success(SampleHeaders, SampleHeaders));
         var coordinator = new UsagePollingCoordinator(fake, LongInterval, NullLogger<UsagePollingCoordinator>.Instance);
         var pollingControl = new PollingControlService();
         pollingControl.AttachCoordinator(coordinator);
         var clickThrough = new ClickThroughService(NullLogger<ClickThroughService>.Instance);
-        var tray = new TrayIconService(pollingControl, clickThrough, NullLogger<TrayIconService>.Instance);
+        var initialConfig = AppConfig.Default with { AutoStartEnabled = autoStartEnabled };
+        var autoStart = new AutoStartService(initialConfig, new AppConfigStore(NullLogger<AppConfigStore>.Instance), NullLogger<AutoStartService>.Instance);
+        var tray = new TrayIconService(pollingControl, clickThrough, autoStart, NullLogger<TrayIconService>.Instance);
 
-        return (tray, pollingControl, clickThrough, coordinator, fake);
+        return (tray, pollingControl, clickThrough, autoStart, coordinator, fake);
     }
 
     [Fact]
-    public void Constructor_EsInstanciableSinSesionDeEscritorioReal_YConstruyeLosCuatroItemsDelMenu()
+    public void Constructor_EsInstanciableSinSesionDeEscritorioReal_YConstruyeLosCincoItemsDelMenu()
     {
         // El propio constructor de producción está diseñado para no tocar
         // NotifyIcon.Visible (solo construye el menú y suscribe eventos) --
         // si tocase Visible=true aquí, esta llamada ya fallaría/lanzaría en
         // el entorno de CI sin bandeja real. Se verifica además que los
-        // cuatro ítems del menú (AC: "Pausar/Reanudar, Recargar,
-        // click-through, Salir") quedan realmente construidos.
+        // cinco ítems del menú (AC: "Pausar/Reanudar, Recargar,
+        // click-through, autoarranque (F6/US-3), Salir") quedan realmente
+        // construidos.
         UsagePollingCoordinator? coordinator = null;
         TrayIconService? tray = null;
 
         var exception = Record.Exception(() =>
         {
-            (tray, _, _, coordinator, _) = CreateService();
+            (tray, _, _, _, coordinator, _) = CreateService();
         });
 
         Assert.Null(exception);
@@ -65,6 +71,7 @@ public sealed class TrayIconServiceTests
         Assert.Equal("Pausar", tray!.PauseResumeItemForTests.Text);
         Assert.Equal("Recargar", tray.ReloadItemForTests.Text);
         Assert.Equal("Ignorar clics", tray.ClickThroughItemForTests.Text);
+        Assert.Equal("Iniciar con Windows", tray.AutoStartItemForTests.Text);
         Assert.Equal("Salir", tray.ExitItemForTests.Text);
 
         coordinator?.Dispose();
@@ -74,7 +81,7 @@ public sealed class TrayIconServiceTests
     [Fact]
     public void PauseResumeItem_AlConstruir_MuestraElTextoPausar()
     {
-        var (tray, _, _, coordinator, _) = CreateService();
+        var (tray, _, _, _, coordinator, _) = CreateService();
 
         Assert.Equal("Pausar", tray.PauseResumeItemForTests.Text);
 
@@ -85,7 +92,7 @@ public sealed class TrayIconServiceTests
     [Fact]
     public void PauseResumeItem_PerformClick_AlternaTextoYIsPausedDePausarAReanudar()
     {
-        var (tray, pollingControl, _, coordinator, _) = CreateService();
+        var (tray, pollingControl, _, _, coordinator, _) = CreateService();
 
         tray.PauseResumeItemForTests.PerformClick();
 
@@ -99,7 +106,7 @@ public sealed class TrayIconServiceTests
     [Fact]
     public void PauseResumeItem_PerformClickDosVeces_VuelveAPausarConSuTextoOriginal()
     {
-        var (tray, pollingControl, _, coordinator, _) = CreateService();
+        var (tray, pollingControl, _, _, coordinator, _) = CreateService();
 
         tray.PauseResumeItemForTests.PerformClick(); // Pausar -> Reanudar
         tray.PauseResumeItemForTests.PerformClick(); // Reanudar -> Pausar
@@ -114,7 +121,7 @@ public sealed class TrayIconServiceTests
     [Fact]
     public async Task ReloadItem_PerformClick_DisparaUnPollAdicionalSinTocarIsPaused()
     {
-        var (tray, pollingControl, _, coordinator, fake) = CreateService();
+        var (tray, pollingControl, _, _, coordinator, fake) = CreateService();
 
         tray.ReloadItemForTests.PerformClick();
 
@@ -134,7 +141,7 @@ public sealed class TrayIconServiceTests
     [Fact]
     public void ClickThroughItem_AlConstruir_NoEstaMarcado()
     {
-        var (tray, _, _, coordinator, _) = CreateService();
+        var (tray, _, _, _, coordinator, _) = CreateService();
 
         Assert.False(tray.ClickThroughItemForTests.Checked);
 
@@ -149,7 +156,7 @@ public sealed class TrayIconServiceTests
         // ClickThroughService.StateChanged sin pasar por user32.dll real --
         // SetEnabledForTests es el gancho internal expuesto exactamente para
         // esto (ver ClickThroughServiceTests).
-        var (tray, _, clickThrough, coordinator, _) = CreateService();
+        var (tray, _, clickThrough, _, coordinator, _) = CreateService();
 
         clickThrough.SetEnabledForTests(true);
 
@@ -164,12 +171,73 @@ public sealed class TrayIconServiceTests
     }
 
     [Fact]
+    public void AutoStartItem_AlConstruirConAutoStartEnabledFalse_NoEstaMarcado()
+    {
+        var (tray, _, _, _, coordinator, _) = CreateService(autoStartEnabled: false);
+
+        Assert.False(tray.AutoStartItemForTests.Checked);
+
+        coordinator.Dispose();
+        tray.Dispose();
+    }
+
+    [Fact]
+    public void Constructor_ConAutoStartEnabledTruePersistido_AunNoMarcaElItem()
+    {
+        // AC F6/US-3: a diferencia de pausa/click-through, el Checked
+        // inicial de este ítem sí debe reflejar el estado ya persistido en
+        // config.json -- pero eso ocurre en Initialize() (línea 90 de
+        // TrayIconService), no en el constructor. Initialize() queda fuera
+        // de esta cobertura (toca NotifyIcon.Visible/Icon reales -- mismo
+        // gap ya documentado en el XMLDoc de la clase), así que este test
+        // solo confirma la mitad determinista y testeable sin escritorio
+        // real: el constructor por sí solo NO adelanta el Checked.
+        var (tray, _, _, _, coordinator, _) = CreateService(autoStartEnabled: true);
+
+        Assert.False(tray.AutoStartItemForTests.Checked);
+
+        coordinator.Dispose();
+        tray.Dispose();
+    }
+
+    [Fact]
+    public void AutoStartItem_PerformClick_InvocaToggleYActualizaElChecked()
+    {
+        // AutoStartService.Toggle() -> SetEnabled(!IsEnabled) -> levanta
+        // StateChanged, al que TrayIconService está suscrito
+        // (OnAutoStartStateChanged) -- mismo patrón ya cubierto para
+        // ClickThroughItem. Redirige config.json a una ruta temporal
+        // (ConfigPathForTests) para no mutar el config.json real de la
+        // máquina que ejecuta el test.
+        var (tray, _, _, autoStart, coordinator, _) = CreateService(autoStartEnabled: false);
+        var tempDir = Path.Combine(Path.GetTempPath(), "ClaudeMeterTests", Guid.NewGuid().ToString("N"));
+        autoStart.ConfigPathForTests = Path.Combine(tempDir, "config.json");
+
+        try
+        {
+            tray.AutoStartItemForTests.PerformClick();
+
+            Assert.True(tray.AutoStartItemForTests.Checked);
+            Assert.True(autoStart.IsEnabled);
+        }
+        finally
+        {
+            coordinator.Dispose();
+            tray.Dispose();
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void ExitItem_Existe_ConElTextoSalirYSinInvocarPerformClick()
     {
-        // AC del menú de bandeja: "Salir" debe existir como cuarto elemento.
+        // AC del menú de bandeja: "Salir" debe existir como último elemento.
         // Deliberadamente no se llama a PerformClick() aquí -- dispararía
         // Application.Current.Shutdown() real (ver XMLDoc de la clase).
-        var (tray, _, _, coordinator, _) = CreateService();
+        var (tray, _, _, _, coordinator, _) = CreateService();
 
         Assert.Equal("Salir", tray.ExitItemForTests.Text);
 
@@ -180,7 +248,7 @@ public sealed class TrayIconServiceTests
     [Fact]
     public void Dispose_LlamadoDosVeces_EsIdempotenteYNoLanza()
     {
-        var (tray, _, _, coordinator, _) = CreateService();
+        var (tray, _, _, _, coordinator, _) = CreateService();
 
         tray.Dispose();
         var exception = Record.Exception(() => tray.Dispose());
@@ -190,20 +258,34 @@ public sealed class TrayIconServiceTests
     }
 
     [Fact]
-    public void Dispose_DesuscribeLosEventosDePollingControlServiceYClickThroughService()
+    public void Dispose_DesuscribeLosEventosDePollingControlServiceYClickThroughServiceYAutoStartService()
     {
         // Tras Dispose(), el menú ya no debe reaccionar a más transiciones
         // de estado -- confirma que Dispose() desuscribe de verdad
-        // PauseStateChanged/StateChanged, no solo libera el NotifyIcon.
-        var (tray, pollingControl, clickThrough, coordinator, _) = CreateService();
+        // PauseStateChanged/StateChanged (incluido el de AutoStartService,
+        // F6/US-3), no solo libera el NotifyIcon.
+        var (tray, pollingControl, clickThrough, autoStart, coordinator, _) = CreateService();
+        var tempDir = Path.Combine(Path.GetTempPath(), "ClaudeMeterTests", Guid.NewGuid().ToString("N"));
+        autoStart.ConfigPathForTests = Path.Combine(tempDir, "config.json");
         tray.Dispose();
 
-        pollingControl.Pause();
-        clickThrough.SetEnabledForTests(true);
+        try
+        {
+            pollingControl.Pause();
+            clickThrough.SetEnabledForTests(true);
+            autoStart.SetEnabled(true);
 
-        Assert.Equal("Pausar", tray.PauseResumeItemForTests.Text); // no se actualizó tras Dispose()
-        Assert.False(tray.ClickThroughItemForTests.Checked); // idem
-
-        coordinator.Dispose();
+            Assert.Equal("Pausar", tray.PauseResumeItemForTests.Text); // no se actualizó tras Dispose()
+            Assert.False(tray.ClickThroughItemForTests.Checked); // idem
+            Assert.False(tray.AutoStartItemForTests.Checked); // idem
+        }
+        finally
+        {
+            coordinator.Dispose();
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
     }
 }

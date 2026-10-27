@@ -1,0 +1,85 @@
+name: Release
+
+# Empaqueta el instalador con Velopack y lo publica como asset de la release
+# de GitHub correspondiente al tag empujado (F6/US-2, issue #25). Solo se
+# dispara en tags v* -- nunca en un push normal ni en un PR (AC de US-2:
+# "en un push que no es tag, solo se ejecuta restore->build->tests").
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # necesario para que `vpk upload github --publish` adjunte el instalador a la release del tag
+
+jobs:
+  package:
+    runs-on: windows-latest # ClaudeMeter.Desktop es net8.0-windows con UseWPF, no compila en Linux/macOS
+    steps:
+      - name: Obtener el código (historial completo para Nerdbank.GitVersioning)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configurar el SDK de .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Instalar las herramientas globales nbgv y vpk
+        run: |
+          dotnet tool install --global nbgv
+          dotnet tool install --global vpk
+
+      - name: Restaurar dependencias
+        run: dotnet restore ClaudeMeter.sln
+
+      # Si falla (p. ej. por warnings-as-errors), el job se detiene aquí y
+      # ningún paso posterior se ejecuta -- comportamiento por defecto de
+      # GitHub Actions (un step fallido detiene el job) -- cumple la AC "no
+      # se publica ningún instalador incompleto o roto" por construcción.
+      - name: Compilar en modo Release
+        run: dotnet build ClaudeMeter.sln -c Release --no-restore
+
+      - name: Ejecutar pruebas (xUnit + bUnit)
+        run: dotnet test ClaudeMeter.sln -c Release --no-build
+
+      - name: Publicar ClaudeMeter.Desktop (self-contained, win-x64)
+        run: dotnet publish src/ClaudeMeter.Desktop/ClaudeMeter.Desktop.csproj -c Release -r win-x64 --self-contained true -o publish/
+
+      - name: Calcular la versión (Nerdbank.GitVersioning)
+        id: version
+        run: |
+          $version = nbgv get-version -v NuGetPackageVersion
+          echo "packVersion=$version" >> $env:GITHUB_OUTPUT
+
+      # --framework webview2: adjunta el WebView2 Evergreen Bootstrapper
+      # (~2MB) como prerrequisito de instalación -- sin él, BlazorWebView no
+      # arrancaría en una máquina limpia donde el runtime de WebView2 no
+      # viniese preinstalado (p. ej. Windows 10, o una imagen de Windows 11
+      # recortada) -- ver Technology Choices del documento de diseño de F6 y
+      # https://docs.velopack.io/reference/cli/content/vpk-windows.
+      # --runtime win-x64: sin él, vpk asume x86 por defecto (visto al
+      # verificar este comando localmente) y el paquete no coincidiría con
+      # el publish self-contained win-x64 del paso anterior.
+      - name: Empaquetar el instalador (vpk pack)
+        run: >
+          vpk pack
+          --packId ClaudeMeter
+          --packVersion ${{ steps.version.outputs.packVersion }}
+          --packDir publish
+          --mainExe ClaudeMeter.Desktop.exe
+          --packTitle "ClaudeMeter"
+          --runtime win-x64
+          --framework webview2
+          --outputDir Releases
+
+      - name: Publicar el instalador como asset de la release de GitHub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          vpk upload github
+          --repoUrl https://github.com/AlejBlasco/claude-usage-widget
+          --token $env:GITHUB_TOKEN
+          --publish
+          --tag ${{ github.ref_name }}

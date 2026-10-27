@@ -2,4 +2,11 @@
   <ItemGroup>
     <ProjectReference Include="..\ClaudeMeter.Domain\ClaudeMeter.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- US-1 (F6): versionado automático. Ver el comentario completo en
+         ClaudeMeter.Domain.csproj (misma desviación del documento de
+         diseño: PackageReference repetido por proyecto en vez de
+         centralizado en Directory.Build.props). -->
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.94" PrivateAssets="all" />
+  </ItemGroup>
 </Project>

@@ -7,6 +7,20 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- US-1 (F6): versionado automático basado en altura de git. Serie
+         3.10.x: 3.10.94 es la última estable de esa serie verificada en
+         api.nuget.org al implementar (el documento de diseño fijaba 3.10.85
+         como referencia, no como patch exacto). PrivateAssets="all": es un
+         generador de versión en tiempo de build, no una dependencia de
+         runtime del widget. Repetido en cada .csproj de src/, no
+         centralizado en Directory.Build.props: desviación deliberada del
+         documento de diseño, ver Deviations del resumen de implementación
+         (un PackageReference sin condición en Directory.Build.props rompe
+         dotnet build/dotnet restore a nivel de solución en este entorno con
+         NETSDK1013 "Identificador de marco de trabajo no válido", porque
+         MSBuild también aplica Directory.Build.props al metaproyecto
+         sintético que genera para el propio .sln). -->
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.94" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
