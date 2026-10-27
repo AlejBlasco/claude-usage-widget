@@ -1,15 +1,20 @@
 # ClaudeMeter .NET
 
 [![CI](https://github.com/AlejBlasco/claude-usage-widget/actions/workflows/ci.yml/badge.svg)](https://github.com/AlejBlasco/claude-usage-widget/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/AlejBlasco/claude-usage-widget?include_prereleases)](https://github.com/AlejBlasco/claude-usage-widget/releases)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)
 ![Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
 
 Widget de escritorio para Windows que muestra en tiempo real el consumo de cuota de **Claude Code** — sesión, semana y countdown hasta el reset — sin salir del escritorio. Ventana sin bordes, siempre encima, con barras por umbral (verde / ámbar / rojo) y una mascota reactiva ("Clawd").
 
-<img src="docs/assets/widget-preview.svg" alt="Mockup del widget ClaudeMeter: ventana sin bordes con barras de sesión y semana coloreadas por umbral" width="720">
+<p align="center">
+  <img src="docs/assets/widget-barras.png" alt="ClaudeMeter: barras de sesión (15%) y semana (5%) en verde, con el tiempo hasta el reset" width="280">
+  &nbsp;&nbsp;
+  <img src="docs/assets/widget-mascota.png" alt="ClaudeMeter: mascota Clawd con el texto «Todo tranquilo»" width="280">
+</p>
 
-*Mockup ilustrativo. Verde por debajo del 70%, ámbar entre 70-90%, rojo a partir del 90%.*
+*Capturas reales (tema oscuro): las barras de sesión y semana, y la mascota "Clawd". Verde por debajo del 70%, ámbar entre 70-90%, rojo a partir del 90%.*
 
 > Proyecto personal y **no oficial**: sin afiliación con Anthropic.
 
@@ -24,7 +29,7 @@ Widget de escritorio para Windows que muestra en tiempo real el consumo de cuota
 
 ## Instalación
 
-Todavía no hay ninguna release publicada: de momento hay que compilarlo desde el código fuente (ver [Desarrollo](#desarrollo)). El instalador de un clic (Velopack) ya está implementado y se publicará con la primera release `v1.0.0`.
+Descarga `ClaudeMeter-win-Setup.exe` (o el zip portable `ClaudeMeter-win-Portable.zip`) desde la [última release](https://github.com/AlejBlasco/claude-usage-widget/releases/latest). El instalador es de un clic, se actualiza solo (Velopack) y no requiere tener .NET instalado. También puedes compilarlo desde el código fuente (ver [Desarrollo](#desarrollo)).
 
 **Requisito:** Claude Code instalado y con sesión iniciada. El widget lee el token OAuth del mismo fichero que usa el CLI (`%USERPROFILE%\.claude\.credentials.json`).
 
