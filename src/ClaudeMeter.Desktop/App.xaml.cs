@@ -5,7 +5,9 @@ using ClaudeMeter.Desktop.Audio;
 using ClaudeMeter.Desktop.Configuration;
 using ClaudeMeter.Desktop.Logging;
 using ClaudeMeter.Desktop.Polling;
+using ClaudeMeter.Desktop.Startup;
 using ClaudeMeter.Desktop.Tray;
+using ClaudeMeter.Desktop.Updates;
 using ClaudeMeter.Desktop.Windowing;
 using ClaudeMeter.Infrastructure.Authentication;
 using ClaudeMeter.Infrastructure.Usage;
@@ -79,12 +81,25 @@ public partial class App : System.Windows.Application
         services.AddSingleton<ClickThroughService>();
         services.AddSingleton<WindowCloseService>();
         services.AddSingleton<PollingControlService>();
+
+        // F6/US-3: autoarranque (issue #26) y auto-actualización (issue
+        // #26) -- colaboradores planos de Desktop, sin puerto de
+        // Application propio (ver rationale en el documento de diseño de
+        // F6, "Sin puerto IUpdateService/IAutoStartService en Application").
+        services.AddSingleton<AutoStartService>();
+        services.AddSingleton<AppUpdateService>();
+
         services.AddSingleton<TrayIconService>();
 
         Services = services.BuildServiceProvider();
 
         // US-2: al completarse OnStartup, el icono ya debe estar visible (AC).
         Services.GetRequiredService<TrayIconService>().Initialize();
+
+        // F6/US-3: re-aplica el autoarranque ya persistido y arranca la
+        // comprobación periódica de actualizaciones.
+        Services.GetRequiredService<AutoStartService>().Initialize();
+        Services.GetRequiredService<AppUpdateService>().Start();
     }
 
     /// <inheritdoc />
@@ -94,6 +109,7 @@ public partial class App : System.Windows.Application
         // convergen aquí vía Application.Shutdown()) -- antes de cerrar
         // logs, por si Dispose() necesitase registrar algo.
         Services.GetRequiredService<TrayIconService>().Dispose();
+        Services.GetRequiredService<AppUpdateService>().Dispose(); // F6/US-3: detiene el timer de comprobación periódica
 
         _httpClient?.Dispose();
         Log.CloseAndFlush(); // US-3: garantiza el volcado del sink de fichero

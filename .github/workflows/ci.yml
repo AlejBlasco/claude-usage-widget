@@ -1,0 +1,40 @@
+name: CI
+
+# Build -> test en cada push y en cada PR contra master (F6/US-2, issue #25).
+# fetch-depth: 0 es obligatorio: Nerdbank.GitVersioning calcula la versión a
+# partir de la "altura" de commits desde el tag/rama de referencia, y un
+# checkout superficial le impide ver esa historia, rompiendo el cálculo de
+# versión en silencio.
+on:
+  push:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest # ClaudeMeter.Desktop/ClaudeMeter.Desktop.Tests son net8.0-windows con UseWPF, no compilan en Linux/macOS
+    steps:
+      - name: Obtener el código (historial completo para Nerdbank.GitVersioning)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configurar el SDK de .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restaurar dependencias
+        run: dotnet restore ClaudeMeter.sln
+
+      # Los analizadores Roslyn con warnings-as-errors en Release (ya
+      # configurado en Directory.Build.props) hacen que este paso falle solo
+      # si hay warnings, sin necesidad de un paso de "analizadores" aparte.
+      - name: Compilar en modo Release
+        run: dotnet build ClaudeMeter.sln -c Release --no-restore
+
+      - name: Ejecutar pruebas (xUnit + bUnit)
+        run: dotnet test ClaudeMeter.sln -c Release --no-build

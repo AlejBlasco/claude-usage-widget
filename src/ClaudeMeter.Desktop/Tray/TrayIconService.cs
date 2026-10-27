@@ -2,6 +2,7 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using ClaudeMeter.Desktop.Polling;
+using ClaudeMeter.Desktop.Startup;
 using ClaudeMeter.Desktop.Windowing;
 using Microsoft.Extensions.Logging;
 
@@ -18,18 +19,21 @@ public sealed class TrayIconService : IDisposable
 {
     private readonly PollingControlService _pollingControl;
     private readonly ClickThroughService _clickThrough;
+    private readonly AutoStartService _autoStart;
     private readonly ILogger<TrayIconService> _logger;
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _pauseResumeItem;
     private readonly ToolStripMenuItem _reloadItem;
     private readonly ToolStripMenuItem _clickThroughItem;
+    private readonly ToolStripMenuItem _autoStartItem;
     private readonly ToolStripMenuItem _exitItem;
     private bool _disposed;
 
-    public TrayIconService(PollingControlService pollingControl, ClickThroughService clickThrough, ILogger<TrayIconService> logger)
+    public TrayIconService(PollingControlService pollingControl, ClickThroughService clickThrough, AutoStartService autoStart, ILogger<TrayIconService> logger)
     {
         _pollingControl = pollingControl;
         _clickThrough = clickThrough;
+        _autoStart = autoStart;
         _logger = logger;
 
         _pauseResumeItem = new ToolStripMenuItem("Pausar");
@@ -40,6 +44,13 @@ public sealed class TrayIconService : IDisposable
 
         _clickThroughItem = new ToolStripMenuItem("Ignorar clics") { CheckOnClick = false };
         _clickThroughItem.Click += (_, _) => _clickThrough.Toggle();
+
+        // F6/US-3: a diferencia de pausa/click-through (que siempre arrancan
+        // en false), el Checked inicial de este ítem sí debe reflejar el
+        // estado ya persistido en config.json desde el primer render del
+        // menú (ver Initialize()).
+        _autoStartItem = new ToolStripMenuItem("Iniciar con Windows") { CheckOnClick = false };
+        _autoStartItem.Click += (_, _) => _autoStart.Toggle();
 
         _exitItem = new ToolStripMenuItem("Salir");
         // Fully-qualified a propósito (norma defensiva ya usada en
@@ -52,6 +63,7 @@ public sealed class TrayIconService : IDisposable
         menu.Items.Add(_pauseResumeItem);
         menu.Items.Add(_reloadItem);
         menu.Items.Add(_clickThroughItem);
+        menu.Items.Add(_autoStartItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_exitItem);
 
@@ -59,6 +71,7 @@ public sealed class TrayIconService : IDisposable
 
         _pollingControl.PauseStateChanged += OnPauseStateChanged;
         _clickThrough.StateChanged += OnClickThroughStateChanged;
+        _autoStart.StateChanged += OnAutoStartStateChanged;
     }
 
     /// <summary>Llamado una única vez al final de <c>App.OnStartup</c> (AC: "al completarse OnStartup, aparece el icono").</summary>
@@ -74,6 +87,8 @@ public sealed class TrayIconService : IDisposable
             _notifyIcon.Icon = SystemIcons.Application;
         }
 
+        _autoStartItem.Checked = _autoStart.IsEnabled; // F6/US-3: refleja el estado ya persistido, no false por defecto
+
         _notifyIcon.Visible = true;
     }
 
@@ -83,10 +98,14 @@ public sealed class TrayIconService : IDisposable
     private void OnClickThroughStateChanged() =>
         _clickThroughItem.Checked = _clickThrough.IsEnabled;
 
+    private void OnAutoStartStateChanged() =>
+        _autoStartItem.Checked = _autoStart.IsEnabled;
+
     /// <summary><c>internal</c> + <c>InternalsVisibleTo</c>: expone los ítems para que xUnit invoque <c>PerformClick()</c> directamente (Definition of Done: sin interacción de ratón real de Windows).</summary>
     internal ToolStripMenuItem PauseResumeItemForTests => _pauseResumeItem;
     internal ToolStripMenuItem ReloadItemForTests => _reloadItem;
     internal ToolStripMenuItem ClickThroughItemForTests => _clickThroughItem;
+    internal ToolStripMenuItem AutoStartItemForTests => _autoStartItem;
     internal ToolStripMenuItem ExitItemForTests => _exitItem;
 
     /// <summary>AC de "icono de bandeja huérfano": oculta y libera el NotifyIcon antes de que el proceso termine. Llamado desde <c>App.OnExit</c>, en las tres vías de cierre (converge en <c>Application.Shutdown()</c>).</summary>
@@ -99,6 +118,7 @@ public sealed class TrayIconService : IDisposable
 
         _pollingControl.PauseStateChanged -= OnPauseStateChanged;
         _clickThrough.StateChanged -= OnClickThroughStateChanged;
+        _autoStart.StateChanged -= OnAutoStartStateChanged;
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _disposed = true;

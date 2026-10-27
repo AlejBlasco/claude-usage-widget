@@ -11,6 +11,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- US-1 (F6): versionado automático. Ver el comentario completo en
+         ClaudeMeter.Domain.csproj (misma desviación del documento de
+         diseño: PackageReference repetido por proyecto en vez de
+         centralizado en Directory.Build.props). El propio documento de
+         diseño ya preveía que ClaudeMeter.Console heredase el versionado
+         como efecto colateral deseable de US-1. -->
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.94" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Permite que ClaudeMeter.Console.Tests invoque el método interno
          UsagePollingLoop.ExecuteIterationAsync sin esperar 60s reales
          por iteración de test — mismo patrón ya usado por

@@ -54,9 +54,17 @@ public static class AppThemeExtensions
 /// argumento <c>Theme</c>) sigan compilando sin tocar ningún fichero de
 /// test — ver Deviations del resumen de implementación.
 /// </param>
-public sealed record AppConfig(TimeSpan PollingInterval, WindowPosition? Position, bool ChimeEnabled, AppTheme Theme = AppTheme.Dark)
+/// <param name="AutoStartEnabled">
+/// Autoarranque con Windows (F6/US-3, issue #26). Por defecto
+/// <c>false</c> — opt-in, mismo criterio ya aplicado a <see cref="ChimeEnabled"/>
+/// (un efecto inesperado, aquí "la app arranca sola con el login", sería
+/// mala primera experiencia). Mismo motivo que <c>Theme</c> para llevar
+/// valor por defecto en la posición: no rompe las construcciones
+/// posicionales de <c>AppConfig</c> ya existentes en los tests.
+/// </param>
+public sealed record AppConfig(TimeSpan PollingInterval, WindowPosition? Position, bool ChimeEnabled, AppTheme Theme = AppTheme.Dark, bool AutoStartEnabled = false)
 {
-    /// <summary>Valores por defecto actuales del widget antes de este ciclo: intervalo 60s, sin posición configurada, chime desactivado, tema oscuro.</summary>
+    /// <summary>Valores por defecto actuales del widget antes de este ciclo: intervalo 60s, sin posición configurada, chime desactivado, tema oscuro, autoarranque desactivado.</summary>
     public static AppConfig Default { get; } =
-        new(TimeSpan.FromSeconds(60), Position: null, ChimeEnabled: false, Theme: AppTheme.Dark);
+        new(TimeSpan.FromSeconds(60), Position: null, ChimeEnabled: false, Theme: AppTheme.Dark, AutoStartEnabled: false);
 }

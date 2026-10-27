@@ -11,6 +11,11 @@
          Infrastructure — nunca Serilog concreto (Clean Architecture, ver
          documento de diseño de F2). -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
+    <!-- US-1 (F6): versionado automático. Ver el comentario completo en
+         ClaudeMeter.Domain.csproj (misma desviación del documento de
+         diseño: PackageReference repetido por proyecto en vez de
+         centralizado en Directory.Build.props). -->
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.94" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <!-- Permite que ClaudeMeter.Infrastructure.Tests use el constructor
