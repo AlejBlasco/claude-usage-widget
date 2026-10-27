@@ -15,17 +15,17 @@ permissions:
 
 jobs:
   build-and-test:
-    runs-on: windows-latest # ClaudeMeter.Desktop/ClaudeMeter.Desktop.Tests son net8.0-windows con UseWPF, no compilan en Linux/macOS
+    runs-on: windows-latest # ClaudeMeter.Desktop/ClaudeMeter.Desktop.Tests son net10.0-windows con UseWPF, no compilan en Linux/macOS
     steps:
       - name: Obtener el código (historial completo para Nerdbank.GitVersioning)
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Configurar el SDK de .NET 8
+      - name: Configurar el SDK de .NET 10
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Restaurar dependencias
         run: dotnet restore ClaudeMeter.sln

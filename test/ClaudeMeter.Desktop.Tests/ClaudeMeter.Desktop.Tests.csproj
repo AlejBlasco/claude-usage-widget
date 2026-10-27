@@ -1,14 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
-    <!-- Debe coincidir con el TFM de Desktop (net8.0-windows) para poder referenciarlo. -->
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- Debe coincidir con el TFM de Desktop (net10.0-windows) para poder referenciarlo. -->
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <!-- Sdk="Microsoft.NET.Sdk.Razor" (migrado en fase de Testing, ver
          docs/sdlc/testing/f1-widget-visual-base.md) es el requisito oficial
          de bUnit para proyectos de test que renderizan componentes Razor
          (UsageBar/UsagePage). Este proyecto no define sus propios .razor,
          solo referencia los de ClaudeMeter.Desktop. -->
+    <!-- Migración a .NET 10 (issue #37): con el SDK 10 el proyecto de test
+         descubre los static web assets del paquete
+         Microsoft.AspNetCore.Components.WebView (blazor.modules.json) tanto
+         por su propia referencia transitiva como a través de Desktop, y
+         falla con "Conflicting assets with the same target path". Los tests
+         bUnit no sirven contenido web, así que se desactiva la
+         infraestructura de static web assets en este proyecto. -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
   </PropertyGroup>
 
   <ItemGroup>
