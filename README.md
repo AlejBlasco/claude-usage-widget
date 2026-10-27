@@ -3,7 +3,7 @@
 [![CI](https://github.com/AlejBlasco/claude-usage-widget/actions/workflows/ci.yml/badge.svg)](https://github.com/AlejBlasco/claude-usage-widget/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/AlejBlasco/claude-usage-widget?include_prereleases)](https://github.com/AlejBlasco/claude-usage-widget/releases)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
-![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)
+![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)
 ![Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
 
 Widget de escritorio para Windows que muestra en tiempo real el consumo de cuota de **Claude Code** — sesión, semana y countdown hasta el reset — sin salir del escritorio. Ventana sin bordes, siempre encima, con barras por umbral (verde / ámbar / rojo) y una mascota reactiva ("Clawd").
@@ -122,7 +122,7 @@ flowchart TD
 
 ## Desarrollo
 
-Requisitos: [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) y Windows (WPF).
+Requisitos: [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) y Windows (WPF).
 
 ```bash
 dotnet build ClaudeMeter.sln

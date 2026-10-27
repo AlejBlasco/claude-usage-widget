@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **ClaudeMeter .NET** — a Windows desktop widget (Blazor Hybrid: WPF host + `BlazorWebView`) that shows real-time Claude Code usage (session/weekly rate limits, countdowns, a reactive "mascot" view). Personal project. The F0 solution scaffolding (`ClaudeMeter.sln` + the 4 layer projects under `src/` and their test projects under `test/`, empty of business logic) is in place; implementation of the roadmap phases below is still in progress.
 
-Stack: .NET 8, WPF, BlazorWebView, MediatR, EF Core (SQLite, post-MVP), xUnit / bUnit, Serilog.
+Stack: .NET 10, WPF, BlazorWebView, MediatR, EF Core (SQLite, post-MVP), xUnit / bUnit, Serilog.
 
 ## Architecture
 

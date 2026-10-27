@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <!-- F3/Ciclo B: icono de bandeja (US-2, issue #17) — NotifyIcon/
          ContextMenuStrip/ToolStripMenuItem llegan con esta propiedad como
@@ -44,41 +44,25 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Última versión estable 8.x disponible en NuGet.org en el momento de
-         implementar (verificada en https://api.nuget.org): 8.0.100, única
-         compatible con el TFM net8.0-windows ya fijado por
-         Directory.Build.props (las series 9.x/10.x exigen net9.0-windows/
-         net10.0-windows). -->
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="8.0.100" />
+    <!-- Serie 10.0.x de Microsoft.AspNetCore.Components.WebView.Wpf, alineada
+         con el TFM net10.0-windows fijado por Directory.Build.props (migración
+         a .NET 10 LTS, issue #37). Última estable verificada en
+         https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.components.webview.wpf/index.json. -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.120" />
 
-    <!-- F2 (US-3, logging estructurado). El documento de diseño fija la
-         serie 8.0.x para los 5 paquetes nuevos, pero al verificar en
-         api.nuget.org en el momento de implementar, dos de ellos nunca
-         publicaron una versión estable 8.0.x (versionan de forma
-         independiente al TFM de .NET, no como Microsoft.Extensions.*):
-         se usa entonces su última versión estable real, compatible con
-         net8.0-windows por multi-targeting (ver desviación documentada en
-         el resumen de implementación). -->
-
-    <!-- Serilog (núcleo): la serie de versión de este paquete nunca ha
-         llegado a 8.x (va de 1.x a 4.x) — última estable real verificada
-         en https://api.nuget.org/v3-flatcontainer/serilog/index.json. -->
+    <!-- F2 (US-3, logging estructurado). Serilog y Serilog.Sinks.File versionan
+         de forma independiente al TFM de .NET (última estable real verificada
+         en api.nuget.org). Serilog.Extensions.Logging y Microsoft.Extensions.Logging
+         se alinean con .NET 10 (issue #37). -->
     <PackageReference Include="Serilog" Version="4.4.0" />
-
-    <!-- Serilog.Sinks.File: el 8.0.0 de este paquete solo existe como
-         prerelease ("-dev-*"/"-nblumhardt-*"), nunca se publicó estable;
-         última estable real verificada en
-         https://api.nuget.org/v3-flatcontainer/serilog.sinks.file/index.json. -->
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 
-    <!-- Serilog.Extensions.Logging: este sí publicó 8.0.0 estable (coincide
-         con la serie 8.0.x asumida por el diseño) — verificado en
-         https://api.nuget.org/v3-flatcontainer/serilog.extensions.logging/index.json. -->
-    <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
+    <!-- Serilog.Extensions.Logging: 10.0.0 es la última estable y su serie
+         acompaña a Microsoft.Extensions.* 10.x. -->
+    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
 
-    <!-- Microsoft.Extensions.Logging: última estable 8.0.x verificada en
-         https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging/index.json. -->
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+    <!-- Microsoft.Extensions.Logging: última estable de la serie 10.0.x. -->
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.14" />
 
     <!-- US-1 (F6): versionado automático. Ver el comentario completo en
          ClaudeMeter.Domain.csproj (misma desviación del documento de

@@ -3,14 +3,13 @@
     <ProjectReference Include="..\ClaudeMeter.Application\ClaudeMeter.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Última versión estable 8.0.x disponible en NuGet.org en el momento
-         de implementar F2 (verificada en
-         https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/index.json):
-         8.0.3, compatible con el TFM net8.0 ya fijado por
-         Directory.Build.props. Solo esta abstracción entra en
+    <!-- Última versión estable de la serie 10.0.x (verificada en
+         https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/index.json),
+         alineada con el TFM net10.0 fijado por Directory.Build.props
+         (migración a .NET 10, issue #37). Solo esta abstracción entra en
          Infrastructure — nunca Serilog concreto (Clean Architecture, ver
          documento de diseño de F2). -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
     <!-- US-1 (F6): versionado automático. Ver el comentario completo en
          ClaudeMeter.Domain.csproj (misma desviación del documento de
          diseño: PackageReference repetido por proyecto en vez de
