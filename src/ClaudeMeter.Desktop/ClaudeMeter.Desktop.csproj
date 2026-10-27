@@ -19,6 +19,9 @@
          VelopackApp.Build().Run() como primera línea, antes de construir
          App; ver Program.cs y el ItemGroup de App.xaml más abajo). -->
     <StartupObject>ClaudeMeter.Desktop.Program</StartupObject>
+    <!-- Icono del ejecutable: lo usan el Explorador, los accesos directos y,
+         vía Icon.ExtractAssociatedIcon, el icono de bandeja (TrayIconService). -->
+    <ApplicationIcon>Assets\claudemeter.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

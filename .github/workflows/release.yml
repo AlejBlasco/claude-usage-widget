@@ -69,6 +69,7 @@ jobs:
           --packVersion ${{ steps.version.outputs.packVersion }}
           --packDir publish
           --mainExe ClaudeMeter.Desktop.exe
+          --icon src/ClaudeMeter.Desktop/Assets/claudemeter.ico
           --packTitle "ClaudeMeter"
           --runtime win-x64
           --framework webview2
